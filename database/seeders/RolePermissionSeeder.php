@@ -13,6 +13,8 @@ class RolePermissionSeeder extends Seeder
         try {
             app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
+            $guardName = config('auth.defaults.guard', 'web'); // Use app's default guard
+
             $permissions = [
                 // Debates
                 'view-debates', 'create-debate', 'manage-debate', 'judge-debate',
@@ -38,7 +40,9 @@ class RolePermissionSeeder extends Seeder
             ];
 
             foreach ($permissions as $perm) {
-                Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'sanctum']);
+                Permission::firstOrCreate(
+                    ['name' => $perm, 'guard_name' => $guardName]
+                );
             }
 
             $rolePermissions = [
@@ -66,8 +70,15 @@ class RolePermissionSeeder extends Seeder
             ];
 
             foreach ($rolePermissions as $roleName => $perms) {
-                $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'sanctum']);
-                $role->syncPermissions($perms);
+                $role = Role::firstOrCreate(
+                    ['name' => $roleName, 'guard_name' => $guardName]
+                );
+                // Sync permissions with the same guard
+                $role->syncPermissions(
+                    Permission::whereIn('name', $perms)
+                        ->where('guard_name', $guardName)
+                        ->get()
+                );
             }
 
             $this->command->info('✓ Roles and permissions seeded.');

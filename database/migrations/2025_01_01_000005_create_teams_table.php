@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('teams', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->boolean('is_random');
             $table->foreignId('leader_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
             $table->enum('status', ['active', 'inactive'])->default('active');

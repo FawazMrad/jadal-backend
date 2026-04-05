@@ -15,6 +15,12 @@ class ComplaintSeeder extends Seeder
             $users   = User::where('role', '!=', 'admin')->get();
             $debates = Debate::whereIn('status', ['completed', 'cancelled'])->get();
 
+            // Check if we have non-admin users to file complaints
+            if ($users->isEmpty()) {
+                $this->command->warn('No non-admin users found. Skipping complaints.');
+                return;
+            }
+
             $complaints = [
                 [
                     'description' => 'المحكم لم يكن محايداً في تقييمه وأعطى نقاطاً غير عادلة للفريق المنافس.',
@@ -46,7 +52,7 @@ class ComplaintSeeder extends Seeder
             foreach ($complaints as $data) {
                 Complaint::create([
                     'filed_by'       => $users->random()->id,
-                    'debate_id'      => rand(0, 1) && $debates->isNotEmpty() ? $debates->random()->id : null,
+                    'debate_id'      => $debates->isNotEmpty() && rand(0, 1) ? $debates->random()->id : null,
                     'description'    => $data['description'],
                     'status'         => $data['status'],
                     'admin_response' => $data['response'],

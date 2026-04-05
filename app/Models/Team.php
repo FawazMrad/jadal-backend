@@ -16,6 +16,7 @@ class Team extends Model
         'name',
         'leader_id',
         'created_by',
+        'is_random',
         'status',
     ];
 

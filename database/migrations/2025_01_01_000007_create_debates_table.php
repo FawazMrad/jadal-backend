@@ -14,6 +14,7 @@ return new class extends Migration
             $table->foreignId('motion_id')->constrained('motions')->cascadeOnDelete();
             $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
             $table->string('title');
+            $table->string('tag');
             $table->text('description')->nullable();
             $table->enum('status', ['scheduled', 'announced', 'teams-selected', 'live', 'completed', 'cancelled'])->default('scheduled');
             $table->string('livekit_room_name')->unique();

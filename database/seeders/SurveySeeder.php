@@ -13,7 +13,14 @@ class SurveySeeder extends Seeder
     public function run(): void
     {
         try {
-            $admin   = User::where('role', 'admin')->first();
+            $admins = User::where('role', 'admin')->get();
+
+            if ($admins->isEmpty()) {
+                $this->command->error('No admins found. Cannot create surveys.');
+                return;
+            }
+
+            $admin = $admins->first();
             $surveys = $this->getSurveysData();
 
             foreach ($surveys as $surveyData) {
@@ -37,7 +44,14 @@ class SurveySeeder extends Seeder
 
                 // Seed responses from 60% of eligible users
                 $eligibleUsers = User::whereIn('role', $surveyData['target_roles'])->get();
-                $respondents   = $eligibleUsers->random(max(1, (int) ($eligibleUsers->count() * 0.6)));
+
+                if ($eligibleUsers->isEmpty()) {
+                    $this->command->warn("No eligible users for survey: {$surveyData['title']}");
+                    continue;
+                }
+
+                $respondentCount = max(1, (int) ($eligibleUsers->count() * 0.6));
+                $respondents = $eligibleUsers->random(min($respondentCount, $eligibleUsers->count()));
 
                 foreach ($respondents as $user) {
                     $answers = [];

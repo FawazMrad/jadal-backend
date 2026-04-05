@@ -87,6 +87,7 @@ class DebateSeeder extends Seeder
                     'scheduled_at'     => $scheduledAt,
                     'started_at'       => $startedAt,
                     'ended_at'         => $endedAt,
+                    'tag'              => 'test'
                 ]);
             }
 

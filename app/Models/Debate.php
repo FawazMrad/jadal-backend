@@ -24,6 +24,7 @@ class Debate extends Model
         'recording_url',
         'transcript',
         'scheduled_at',
+        'tag',
         'started_at',
         'ended_at',
     ];

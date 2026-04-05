@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Debate;
 use App\Models\DebateParticipant;
-use App\Models\Feedback;
+use App\Models\Feedbacks;
 use Illuminate\Database\Seeder;
 
 class FeedbackSeeder extends Seeder
@@ -24,15 +24,15 @@ class FeedbackSeeder extends Seeder
                 $trainers = $participants->where('role', 'trainer');
                 $debaters = $participants->where('role', 'debater');
 
-                // Judges give feedback to each debater
+                // Judges give feedbacks to each debater
                 foreach ($judges as $judge) {
                     foreach ($debaters->take(3) as $debater) {
-                        Feedback::create([
+                        Feedbacks::create([
                             'debate_id'    => $debate->id,
                             'from_user_id' => $judge->user_id,
                             'to_user_id'   => $debater->user_id,
                             'type'         => 'judge_to_debater',
-                            'content'      => $this->randomFeedbackContent('judge'),
+                            'content'      => $this->randomFeedbacksContent('judge'),
                             'scores'       => [
                                 'argumentation' => rand(1, 10),
                                 'delivery'      => rand(1, 10),
@@ -44,15 +44,15 @@ class FeedbackSeeder extends Seeder
                     }
                 }
 
-                // Trainers give feedback to debaters
+                // Trainers give feedbacks to debaters
                 foreach ($trainers as $trainer) {
                     foreach ($debaters->take(2) as $debater) {
-                        Feedback::create([
+                        Feedbacks::create([
                             'debate_id'    => $debate->id,
                             'from_user_id' => $trainer->user_id,
                             'to_user_id'   => $debater->user_id,
                             'type'         => 'trainer_to_debater',
-                            'content'      => $this->randomFeedbackContent('trainer'),
+                            'content'      => $this->randomFeedbacksContent('trainer'),
                             'scores'       => [
                                 'critical_thinking' => rand(1, 10),
                                 'public_speaking'   => rand(1, 10),
@@ -63,27 +63,27 @@ class FeedbackSeeder extends Seeder
                     }
                 }
 
-                // Debaters give session feedback
+                // Debaters give session feedbacks
                 foreach ($debaters->take(2) as $debater) {
-                    Feedback::create([
+                    Feedbacks::create([
                         'debate_id'    => $debate->id,
                         'from_user_id' => $debater->user_id,
                         'to_user_id'   => null,
                         'type'         => 'debater_on_session',
-                        'content'      => $this->randomFeedbackContent('session'),
+                        'content'      => $this->randomFeedbacksContent('session'),
                         'scores'       => null,
                     ]);
                     $count++;
                 }
             }
 
-            $this->command->info("✓ Feedbacks seeded: {$count} feedback records.");
+            $this->command->info("✓ Feedbacks seeded: {$count} feedbacks records.");
         } catch (\Throwable $e) {
-            $this->command->error('FeedbackSeeder failed: ' . $e->getMessage());
+            $this->command->error('FeedbacksSeeder failed: ' . $e->getMessage());
         }
     }
 
-    private function randomFeedbackContent(string $type): string
+    private function randomFeedbacksContent(string $type): string
     {
         $contents = [
             'judge' => [

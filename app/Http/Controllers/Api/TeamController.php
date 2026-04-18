@@ -6,13 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Team\AddMembersRequest;
 use App\Http\Requests\Team\CreateTeamRequest;
 use App\Http\Requests\Team\ReorderPriorityRequest;
+use App\Http\Requests\Team\RespondLeaveRequest;
 use App\Http\Requests\Team\UpdateTeamRequest;
+use App\Http\Resources\TeamLeaveRequestResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
+use App\Models\TeamLeaveRequest;
 use App\Models\TeamMember;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TeamController extends Controller
 {
@@ -251,13 +255,11 @@ class TeamController extends Controller
         );
     }
 
-    // ── FR-22: Leave team (any authenticated user) ────────────────────────────
+    // ── FR-22: Request to leave team (creates pending request for trainer) ──────
 
     public function leave(Request $request, Team $team): JsonResponse
     {
         $user = $request->user();
-
-        // TODO: FR-21 — if debater wants to REQUEST a change of team, store the request separately
 
         $membership = TeamMember::where('team_id', $team->id)
             ->where('user_id', $user->id)
@@ -280,10 +282,101 @@ class TeamController extends Controller
             );
         }
 
-        // Preserve history — FR-22
-        $membership->update(['status' => 'past']);
+        $existing = TeamLeaveRequest::where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'pending')
+            ->exists();
 
-        return $this->success(null, 'تم مغادرة الفريق بنجاح. | You have left the team.');
+        if ($existing) {
+            return $this->error(
+                'لديك طلب مغادرة معلق بانتظار موافقة المدرب. | You already have a pending leave request awaiting trainer approval.',
+                [],
+                409
+            );
+        }
+
+        $leaveRequest = TeamLeaveRequest::create([
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'status'  => 'pending',
+            'reason'  => $request->input('reason'),
+        ]);
+
+        // TODO: send notification to trainer ($team->createdBy)
+
+        return $this->success(
+            new TeamLeaveRequestResource($leaveRequest),
+            'تم إرسال طلب المغادرة. في انتظار موافقة المدرب. | Leave request submitted. Awaiting trainer approval.'
+        );
+    }
+
+    // ── Trainer: list leave requests for a team ───────────────────────────────
+
+    public function leaveRequests(Request $request, Team $team): JsonResponse
+    {
+        if (! $this->ownsTeam($request, $team)) {
+            return $this->error('غير مصرح. | Unauthorized.', [], 403);
+        }
+
+        $requests = TeamLeaveRequest::where('team_id', $team->id)
+            ->with('user')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return $this->success(
+            TeamLeaveRequestResource::collection($requests),
+            'تم جلب طلبات المغادرة. | Leave requests retrieved.'
+        );
+    }
+
+    // ── Trainer: accept or reject a leave request ─────────────────────────────
+
+    public function respondToLeave(RespondLeaveRequest $request, Team $team, TeamLeaveRequest $leaveRequest): JsonResponse
+    {
+        if (! $this->ownsTeam($request, $team)) {
+            return $this->error('غير مصرح. | Unauthorized.', [], 403);
+        }
+
+        if ($leaveRequest->team_id !== $team->id) {
+            return $this->error(
+                'طلب المغادرة لا ينتمي لهذا الفريق. | Leave request does not belong to this team.',
+                [],
+                404
+            );
+        }
+
+        if ($leaveRequest->status !== 'pending') {
+            return $this->error(
+                'تم الرد على هذا الطلب مسبقاً. | This request has already been responded to.',
+                [],
+                409
+            );
+        }
+
+        DB::transaction(function () use ($request, $team, $leaveRequest) {
+            $leaveRequest->update([
+                'status'       => $request->status,
+                'responded_at' => now(),
+            ]);
+
+            if ($request->status === 'accepted') {
+                TeamMember::where('team_id', $team->id)
+                    ->where('user_id', $leaveRequest->user_id)
+                    ->where('status', 'current')
+                    ->update(['status' => 'past']);
+
+                // TODO: notify user — leave accepted
+            }
+            // TODO: notify user — leave rejected
+        });
+
+        $leaveRequest->load('user');
+
+        $message = $request->status === 'accepted'
+            ? 'تمت الموافقة على طلب المغادرة. | Leave request accepted.'
+            : 'تم رفض طلب المغادرة. | Leave request rejected.';
+
+        return $this->success(new TeamLeaveRequestResource($leaveRequest), $message);
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────

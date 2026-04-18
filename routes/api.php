@@ -71,6 +71,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{team}/members',                    [TeamController::class, 'addMembers'])      ->name('members.add');
         Route::delete('/{team}/members/{user}',           [TeamController::class, 'removeMember'])    ->name('members.remove');
         Route::put('/{team}/members/priority',            [TeamController::class, 'reorderPriority']) ->name('members.priority');
+
+        // Leave request management (trainer responds)
+        Route::get('/{team}/leave-requests',                                    [TeamController::class, 'leaveRequests'])  ->name('leave-requests.index');
+        Route::patch('/{team}/leave-requests/{leaveRequest}/respond',           [TeamController::class, 'respondToLeave']) ->name('leave-requests.respond');
     });
 
     // ── Admin: user management (FR-45 → FR-48) ───────────────────────────────

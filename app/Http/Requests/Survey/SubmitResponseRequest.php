@@ -33,7 +33,7 @@ class SubmitResponseRequest extends FormRequest
 
             $survey->loadMissing('questions');
 
-            $requiredIds = $survey->questions->pluck('id')->map(fn($id) => (string) $id)->all();
+            $requiredIds = $survey->questions->pluck('id')->all();
             $submittedIds = array_keys($this->input('answers', []));
 
             foreach ($requiredIds as $qId) {
@@ -43,4 +43,4 @@ class SubmitResponseRequest extends FormRequest
             }
         });
     }
-}
+    }

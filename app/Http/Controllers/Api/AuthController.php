@@ -99,12 +99,8 @@ class AuthController extends Controller
 
         // Generate token manually
         $token = Password::createToken($user);
-
-        // Log it for now (replace with real email later)
-        \Log::info('Password reset token for ' . $user->email . ': ' . $token);
-
-        // TODO: send email with token when VPS and domain are ready
-        // The frontend should call POST /api/auth/password/reset with email + token + new password
+        // Send password reset email
+        $user->sendPasswordResetNotification($token);
 
         return response()->json([
             'success' => true,

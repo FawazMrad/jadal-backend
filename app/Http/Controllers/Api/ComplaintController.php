@@ -18,7 +18,7 @@ class ComplaintController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($complaints, ComplaintResource::class, 'تم جلب شكاواك. | Your complaints retrieved.');
+        return $this->paginated(ComplaintResource::collection($complaints), $complaints, 'تم جلب شكاواك. | Your complaints retrieved.');
     }
 
     public function store(StoreComplaintRequest $request): JsonResponse
@@ -36,11 +36,11 @@ class ComplaintController extends Controller
     public function index(Request $request): JsonResponse
     {
         $complaints = Complaint::with('filedBy')
-            ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($request->status, fn($q) => $q->where('status', $request->status))
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($complaints, ComplaintResource::class, 'تم جلب الشكاوى. | Complaints retrieved.');
+        return $this->paginated(ComplaintResource::collection($complaints), $complaints, 'تم جلب الشكاوى. | Complaints retrieved.');
     }
 
     public function show(Complaint $complaint): JsonResponse

@@ -21,7 +21,7 @@ class FeedbackController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($feedbacks, FeedbackResource::class, 'تم جلب التغذية الراجعة. | Feedbacks retrieved.');
+        return $this->paginated(FeedbackResource::collection($feedbacks), $feedbacks, 'تم جلب التغذية الراجعة. | Feedbacks retrieved.');
     }
 
     public function store(StoreFeedbackRequest $request): JsonResponse

@@ -13,11 +13,11 @@ class NotificationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $notifications = Notification::where('user_id', $request->user()->id)
-            ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
+            ->when($request->boolean('unread_only'), fn($q) => $q->whereNull('read_at'))
             ->latest('created_at')
             ->paginate(20);
 
-        return $this->paginated($notifications, NotificationResource::class, 'تم جلب الإشعارات. | Notifications retrieved.');
+        return $this->paginated(NotificationResource::collection($notifications), $notifications, 'تم جلب الإشعارات. | Notifications retrieved.');
     }
 
     public function markRead(Request $request, Notification $notification): JsonResponse

@@ -21,7 +21,7 @@ class EvaluationController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($evaluations, EvaluationResource::class, 'تم جلب التقييمات. | Evaluations retrieved.');
+        return $this->paginated(EvaluationResource::collection($evaluations), $evaluations,  'تم جلب التقييمات. | Evaluations retrieved.');
     }
 
     public function store(StoreEvaluationRequest $request): JsonResponse

@@ -18,11 +18,11 @@ class MotionController extends Controller
         $motions = Motion::with(['addedBy', 'frameworks'])
             ->when(
                 $request->framework_id,
-                fn ($q) => $q->whereHas('frameworks', fn ($q2) => $q2->where('motion_frameworks.id', $request->framework_id))
+                fn($q) => $q->whereHas('frameworks', fn($q2) => $q2->where('motion_frameworks.id', $request->framework_id))
             )
             ->paginate(20);
 
-        return $this->paginated($motions, MotionResource::class, 'تم جلب الحركات. | Motions retrieved.');
+        return $this->paginated(MotionResource::collection($motions), $motions, 'تم جلب الحركات. | Motions retrieved.');
     }
 
     public function show(Motion $motion): JsonResponse

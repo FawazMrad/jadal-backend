@@ -30,7 +30,7 @@ class DebateController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($debates, DebateResource::class, 'تم جلب نقاشاتك. | Your debates retrieved.');
+        return $this->paginated(DebateResource::collection($debates), $debates, 'تم جلب نقاشاتك. | Your debates retrieved.');
     }
 
     public function show(Request $request, Debate $debate): JsonResponse

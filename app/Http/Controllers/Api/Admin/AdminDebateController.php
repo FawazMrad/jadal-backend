@@ -28,14 +28,14 @@ class AdminDebateController extends Controller
             ->latest()
             ->paginate(20);
 
-        return $this->paginated($debates, DebateResource::class, 'تم جلب النقاشات. | Debates retrieved.');
+        return $this->paginated(DebateResource::collection($debates), $debates, 'تم جلب النقاشات. | Debates retrieved.');
     }
 
     public function store(StoreDebateRequest $request): JsonResponse
     {
         $debate = Debate::create(array_merge($request->validated(), [
             'created_by'        => $request->user()->id,
-            'status'            => 'pending',
+            'status'            => 'scheduled',
             'livekit_room_name' => 'debate-' . Str::uuid(),
         ]));
 
@@ -132,7 +132,7 @@ class AdminDebateController extends Controller
 
     public function start(Debate $debate): JsonResponse
     {
-        if ($debate->status !== 'pending') {
+        if ($debate->status !== 'scheduled') {
             return $this->error(
                 'يمكن بدء النقاشات المعلقة فقط. | Only pending debates can be started.',
                 [],

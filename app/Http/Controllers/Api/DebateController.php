@@ -70,9 +70,9 @@ class DebateController extends Controller
     {
         $user = $request->user();
 
-        if ($debate->status !== 'pending') {
+        if ($debate->status !== 'scheduled') {
             return $this->error(
-                'التسجيل متاح فقط للنقاشات المعلقة. | Registration only allowed for pending debates.',
+                'التسجيل متاح فقط للنقاشات المجدولة. | Registration is only allowed for scheduled debates.',
                 [],
                 422
             );

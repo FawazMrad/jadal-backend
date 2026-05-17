@@ -21,12 +21,12 @@ class AdminSurveyController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $surveys = Survey::with('createdBy')
+        $surveys = Survey::with(['createdBy', 'questions'])
             ->orderBy('created_at', 'desc')
             ->paginate(15);
 
         return $this->paginated(
-            SurveyResource::collection($surveys),
+            SurveyDetailResource::collection($surveys),
             $surveys,
             'تم جلب الاستطلاعات. | Surveys retrieved.'
         );

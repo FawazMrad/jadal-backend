@@ -10,120 +10,99 @@ class DebateFormatSeeder extends Seeder
     public function run(): void
     {
         try {
+            // Clear existing formats before re-seeding
+            DebateFormat::truncate();
+
             $formats = [
                 [
                     'name'        => 'British Parliamentary',
                     'description' => 'Four teams of two speakers compete: two government teams (Opening and Closing) and two opposition teams (Opening and Closing).',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'Prime Minister Opening', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Leader of Opposition Opening', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Deputy Prime Minister', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Deputy Leader of Opposition', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Member for Government', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Member for Opposition', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Government Whip', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Opposition Whip', 'duration' => 420, 'side' => 'opposition'],
-                        ],
-                        'speakers_per_team' => 2,
-                        'teams_count' => 4,
+                        ['name' => 'Prime Minister Opening',          'order_index' => 1,  'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Leader of Opposition Opening',    'order_index' => 2,  'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Deputy Prime Minister',           'order_index' => 3,  'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Deputy Leader of Opposition',     'order_index' => 4,  'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Member for Government',           'order_index' => 5,  'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Member for Opposition',           'order_index' => 6,  'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Government Whip',                 'order_index' => 7,  'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Opposition Whip',                 'order_index' => 8,  'duration_seconds' => 420, 'role' => 'opposition'],
                     ],
                 ],
                 [
                     'name'        => 'Asian Parliamentary',
                     'description' => 'Two teams of three speakers compete on a given motion.',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'Prime Minister', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Leader of Opposition', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Deputy Prime Minister', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Deputy Leader of Opposition', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Government Whip', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'Opposition Whip', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Opposition Reply', 'duration' => 240, 'side' => 'opposition'],
-                            ['name' => 'Government Reply', 'duration' => 240, 'side' => 'proposition'],
-                        ],
-                        'speakers_per_team' => 3,
-                        'teams_count' => 2,
+                        ['name' => 'Prime Minister',              'order_index' => 1, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Leader of Opposition',        'order_index' => 2, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Deputy Prime Minister',       'order_index' => 3, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Deputy Leader of Opposition', 'order_index' => 4, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Government Whip',             'order_index' => 5, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'Opposition Whip',             'order_index' => 6, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Opposition Reply',            'order_index' => 7, 'duration_seconds' => 240, 'role' => 'opposition'],
+                        ['name' => 'Government Reply',            'order_index' => 8, 'duration_seconds' => 240, 'role' => 'proposition'],
                     ],
                 ],
                 [
                     'name'        => 'Karl Popper',
                     'description' => 'Teams of three students debate a resolution. Named after philosopher Karl Popper.',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'First Affirmative Constructive', 'duration' => 360, 'side' => 'proposition'],
-                            ['name' => 'Cross Examination by Negative', 'duration' => 180, 'side' => 'opposition'],
-                            ['name' => 'First Negative Constructive', 'duration' => 360, 'side' => 'opposition'],
-                            ['name' => 'Cross Examination by Affirmative', 'duration' => 180, 'side' => 'proposition'],
-                            ['name' => 'Second Affirmative Rebuttal', 'duration' => 360, 'side' => 'proposition'],
-                            ['name' => 'Cross Examination by Negative', 'duration' => 180, 'side' => 'opposition'],
-                            ['name' => 'Second Negative Rebuttal', 'duration' => 360, 'side' => 'opposition'],
-                            ['name' => 'Cross Examination by Affirmative', 'duration' => 180, 'side' => 'proposition'],
-                            ['name' => 'Third Affirmative Rebuttal', 'duration' => 300, 'side' => 'proposition'],
-                            ['name' => 'Third Negative Rebuttal', 'duration' => 300, 'side' => 'opposition'],
-                        ],
-                        'speakers_per_team' => 3,
-                        'teams_count' => 2,
+                        ['name' => 'First Affirmative Constructive',     'order_index' => 1,  'duration_seconds' => 360, 'role' => 'proposition'],
+                        ['name' => 'Cross Examination by Negative',      'order_index' => 2,  'duration_seconds' => 180, 'role' => 'opposition'],
+                        ['name' => 'First Negative Constructive',        'order_index' => 3,  'duration_seconds' => 360, 'role' => 'opposition'],
+                        ['name' => 'Cross Examination by Affirmative',   'order_index' => 4,  'duration_seconds' => 180, 'role' => 'proposition'],
+                        ['name' => 'Second Affirmative Rebuttal',        'order_index' => 5,  'duration_seconds' => 360, 'role' => 'proposition'],
+                        ['name' => 'Cross Examination by Negative',      'order_index' => 6,  'duration_seconds' => 180, 'role' => 'opposition'],
+                        ['name' => 'Second Negative Rebuttal',           'order_index' => 7,  'duration_seconds' => 360, 'role' => 'opposition'],
+                        ['name' => 'Cross Examination by Affirmative',   'order_index' => 8,  'duration_seconds' => 180, 'role' => 'proposition'],
+                        ['name' => 'Third Affirmative Rebuttal',         'order_index' => 9,  'duration_seconds' => 300, 'role' => 'proposition'],
+                        ['name' => 'Third Negative Rebuttal',            'order_index' => 10, 'duration_seconds' => 300, 'role' => 'opposition'],
                     ],
                 ],
                 [
                     'name'        => 'Lincoln-Douglas',
                     'description' => 'A one-on-one debate format focusing on values and philosophy.',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'Affirmative Constructive', 'duration' => 360, 'side' => 'proposition'],
-                            ['name' => 'Negative Cross Examination', 'duration' => 180, 'side' => 'opposition'],
-                            ['name' => 'Negative Constructive & Rebuttal', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'Affirmative Cross Examination', 'duration' => 180, 'side' => 'proposition'],
-                            ['name' => 'Affirmative Rebuttal', 'duration' => 240, 'side' => 'proposition'],
-                            ['name' => 'Negative Rebuttal', 'duration' => 180, 'side' => 'opposition'],
-                            ['name' => 'Affirmative Final Rebuttal', 'duration' => 180, 'side' => 'proposition'],
-                        ],
-                        'speakers_per_team' => 1,
-                        'teams_count' => 2,
+                        ['name' => 'Affirmative Constructive',          'order_index' => 1, 'duration_seconds' => 360, 'role' => 'proposition'],
+                        ['name' => 'Negative Cross Examination',        'order_index' => 2, 'duration_seconds' => 180, 'role' => 'opposition'],
+                        ['name' => 'Negative Constructive & Rebuttal',  'order_index' => 3, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'Affirmative Cross Examination',     'order_index' => 4, 'duration_seconds' => 180, 'role' => 'proposition'],
+                        ['name' => 'Affirmative Rebuttal',              'order_index' => 5, 'duration_seconds' => 240, 'role' => 'proposition'],
+                        ['name' => 'Negative Rebuttal',                 'order_index' => 6, 'duration_seconds' => 180, 'role' => 'opposition'],
+                        ['name' => 'Affirmative Final Rebuttal',        'order_index' => 7, 'duration_seconds' => 180, 'role' => 'proposition'],
                     ],
                 ],
                 [
                     'name'        => 'World Schools',
                     'description' => 'International format used in the World Schools Debating Championship.',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'First Proposition', 'duration' => 480, 'side' => 'proposition'],
-                            ['name' => 'First Opposition', 'duration' => 480, 'side' => 'opposition'],
-                            ['name' => 'Second Proposition', 'duration' => 480, 'side' => 'proposition'],
-                            ['name' => 'Second Opposition', 'duration' => 480, 'side' => 'opposition'],
-                            ['name' => 'Third Proposition', 'duration' => 480, 'side' => 'proposition'],
-                            ['name' => 'Third Opposition', 'duration' => 480, 'side' => 'opposition'],
-                            ['name' => 'Opposition Reply', 'duration' => 240, 'side' => 'opposition'],
-                            ['name' => 'Proposition Reply', 'duration' => 240, 'side' => 'proposition'],
-                        ],
-                        'speakers_per_team' => 3,
-                        'teams_count' => 2,
+                        ['name' => 'First Proposition',  'order_index' => 1, 'duration_seconds' => 480, 'role' => 'proposition'],
+                        ['name' => 'First Opposition',   'order_index' => 2, 'duration_seconds' => 480, 'role' => 'opposition'],
+                        ['name' => 'Second Proposition', 'order_index' => 3, 'duration_seconds' => 480, 'role' => 'proposition'],
+                        ['name' => 'Second Opposition',  'order_index' => 4, 'duration_seconds' => 480, 'role' => 'opposition'],
+                        ['name' => 'Third Proposition',  'order_index' => 5, 'duration_seconds' => 480, 'role' => 'proposition'],
+                        ['name' => 'Third Opposition',   'order_index' => 6, 'duration_seconds' => 480, 'role' => 'opposition'],
+                        ['name' => 'Opposition Reply',   'order_index' => 7, 'duration_seconds' => 240, 'role' => 'opposition'],
+                        ['name' => 'Proposition Reply',  'order_index' => 8, 'duration_seconds' => 240, 'role' => 'proposition'],
                     ],
                 ],
                 [
                     'name'        => 'مناظرة عربية',
                     'description' => 'نظام مناظرة عربي يعتمد على ثلاثة متحدثين لكل جانب مع جولات للرد والتفنيد.',
                     'phase_config' => [
-                        'phases' => [
-                            ['name' => 'المقدم الأول للفريق المؤيد', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'المقدم الأول للفريق المعارض', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'المقدم الثاني للفريق المؤيد', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'المقدم الثاني للفريق المعارض', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'المقدم الثالث للفريق المؤيد', 'duration' => 420, 'side' => 'proposition'],
-                            ['name' => 'المقدم الثالث للفريق المعارض', 'duration' => 420, 'side' => 'opposition'],
-                            ['name' => 'رد الفريق المعارض', 'duration' => 240, 'side' => 'opposition'],
-                            ['name' => 'رد الفريق المؤيد', 'duration' => 240, 'side' => 'proposition'],
-                        ],
-                        'speakers_per_team' => 3,
-                        'teams_count' => 2,
+                        ['name' => 'المقدم الأول للفريق المؤيد',     'order_index' => 1, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'المقدم الأول للفريق المعارض',    'order_index' => 2, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'المقدم الثاني للفريق المؤيد',    'order_index' => 3, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'المقدم الثاني للفريق المعارض',   'order_index' => 4, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'المقدم الثالث للفريق المؤيد',    'order_index' => 5, 'duration_seconds' => 420, 'role' => 'proposition'],
+                        ['name' => 'المقدم الثالث للفريق المعارض',   'order_index' => 6, 'duration_seconds' => 420, 'role' => 'opposition'],
+                        ['name' => 'رد الفريق المعارض',              'order_index' => 7, 'duration_seconds' => 240, 'role' => 'opposition'],
+                        ['name' => 'رد الفريق المؤيد',               'order_index' => 8, 'duration_seconds' => 240, 'role' => 'proposition'],
                     ],
                 ],
             ];
 
             foreach ($formats as $format) {
-                DebateFormat::firstOrCreate(['name' => $format['name']], $format);
+                DebateFormat::create($format);
             }
 
             $this->command->info('✓ Debate formats seeded: ' . count($formats) . ' formats.');

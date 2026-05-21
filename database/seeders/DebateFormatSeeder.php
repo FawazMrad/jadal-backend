@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\DebateFormat;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DebateFormatSeeder extends Seeder
 {
@@ -11,7 +12,9 @@ class DebateFormatSeeder extends Seeder
     {
         try {
             // Clear existing formats before re-seeding
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
             DebateFormat::truncate();
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
             $formats = [
                 [

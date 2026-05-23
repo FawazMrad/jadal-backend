@@ -135,19 +135,19 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         ->name('teams.leave');
 
     // ── Teams — trainer management ────────────────────────────────────────────
-    Route::middleware('role:trainer')->prefix('teams')->name('teams.')->group(function (): void {
-        Route::get('/',          [TeamController::class, 'index'])  ->name('index');
-        Route::post('/',         [TeamController::class, 'store'])  ->name('store');
-        Route::get('/{team}',    [TeamController::class, 'show'])   ->name('show');
-        Route::put('/{team}',    [TeamController::class, 'update']) ->name('update');
+    Route::middleware('role:admin,trainer')->prefix('teams')->name('teams.')->group(function (): void {
+        Route::get('/',          [TeamController::class, 'index'])->name('index');
+        Route::post('/',         [TeamController::class, 'store'])->name('store');
+        Route::get('/{team}',    [TeamController::class, 'show'])->name('show');
+        Route::put('/{team}',    [TeamController::class, 'update'])->name('update');
         Route::delete('/{team}', [TeamController::class, 'destroy'])->name('destroy');
 
-        Route::post('/{team}/members',              [TeamController::class, 'addMembers'])      ->name('members.add');
-        Route::delete('/{team}/members/{user}',     [TeamController::class, 'removeMember'])    ->name('members.remove');
-        Route::put('/{team}/members/priority',      [TeamController::class, 'reorderPriority']) ->name('members.priority');
+        Route::post('/{team}/members',              [TeamController::class, 'addMembers'])->name('members.add');
+        Route::delete('/{team}/members/{user}',     [TeamController::class, 'removeMember'])->name('members.remove');
+        Route::put('/{team}/members/priority',      [TeamController::class, 'reorderPriority'])->name('members.priority');
 
-        Route::get('/{team}/leave-requests',                            [TeamController::class, 'leaveRequests'])  ->name('leave-requests.index');
-        Route::patch('/{team}/leave-requests/{leaveRequest}/respond',   [TeamController::class, 'respondToLeave']) ->name('leave-requests.respond');
+        Route::get('/{team}/leave-requests',                            [TeamController::class, 'leaveRequests'])->name('leave-requests.index');
+        Route::patch('/{team}/leave-requests/{leaveRequest}/respond',   [TeamController::class, 'respondToLeave'])->name('leave-requests.respond');
     });
 
     // ── Trainer surveys ───────────────────────────────────────────────────────

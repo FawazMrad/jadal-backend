@@ -24,10 +24,27 @@ class TeamController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $teams = Team::where('created_by', $request->user()->id)
-            ->with(['leader', 'createdBy', 'teamMembers.user'])
-            ->latest()
-            ->get();
+        $user = $request->user();
+
+        $query = Team::with(['leader', 'createdBy', 'teamMembers.user']);
+
+        // Admin can see all teams
+        if ($user->role === 'admin') {
+            $teams = $query->latest()->get();
+        }
+        // Trainer can see only his own teams
+        else if ($user->role === 'trainer') {
+            $teams = $query->where('created_by', $user->id)
+                ->latest()
+                ->get();
+        }
+        // Other roles are not allowed
+        else {
+            return response()->json([
+                'success' => false,
+                'message' => 'غير مصرح لك بيسلان  بالوصول. | You are not authorized to access this resource.'
+            ], 403);
+        }
 
         return $this->success(
             TeamResource::collection($teams),
@@ -39,18 +56,28 @@ class TeamController extends Controller
 
     public function store(CreateTeamRequest $request): JsonResponse
     {
+        $user = $request->user();
+
+        // Only admin and trainer can create teams
+        if (!in_array($user->role, ['admin', 'trainer'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'غير مصرح لك بإنشاء فريق. | You are not authorized to create teams.'
+            ], 403);
+        }
+
         $leaderId  = (int) $request->leader_id;
         $memberIds = array_map('intval', $request->members);
 
         $team = Team::create([
             'name'       => $request->name,
             'leader_id'  => $leaderId,
-            'created_by' => $request->user()->id,
+            'created_by' => $user->id,           // Important: use $user->id
             'status'     => 'active',
             'is_random'  => false,
         ]);
 
-        // Leader always gets priority 1; remaining members in provided order get 2, 3, ...
+        // Leader always gets priority 1
         TeamMember::create([
             'team_id'  => $team->id,
             'user_id'  => $leaderId,
@@ -60,9 +87,8 @@ class TeamController extends Controller
 
         $priority = 2;
         foreach ($memberIds as $userId) {
-            if ($userId === $leaderId) {
-                continue;
-            }
+            if ($userId === $leaderId) continue;
+
             TeamMember::create([
                 'team_id'  => $team->id,
                 'user_id'  => $userId,
@@ -73,7 +99,11 @@ class TeamController extends Controller
 
         $team->load(['leader', 'createdBy', 'teamMembers.user']);
 
-        return $this->success(new TeamResource($team), 'تم إنشاء الفريق بنجاح. | Team created.', 201);
+        return $this->success(
+            new TeamResource($team),
+            'تم إنشاء الفريق بنجاح. | Team created.',
+            201
+        );
     }
 
     // ── Show single team ──────────────────────────────────────────────────────

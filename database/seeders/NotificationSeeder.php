@@ -12,6 +12,7 @@ class NotificationSeeder extends Seeder
     public function run(): void
     {
         try {
+            $faker   = \Faker\Factory::create();
             $users   = User::all();
             $debates = Debate::all();
             $count   = 0;
@@ -48,7 +49,7 @@ class NotificationSeeder extends Seeder
                 // 2–5 notifications per user
                 $notifCount = rand(2, 5);
                 for ($i = 0; $i < $notifCount; $i++) {
-                    $template = fake()->randomElement($notifTemplates);
+                    $template = $faker->randomElement($notifTemplates);
                     $debate   = $debates->isNotEmpty() ? $debates->random() : null;
                     $body     = str_contains($template['body'], '%s') && $debate
                         ? sprintf($template['body'], $debate->title)

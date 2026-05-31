@@ -85,6 +85,8 @@ class FeedbackSeeder extends Seeder
 
     private function randomFeedbacksContent(string $type): string
     {
+        $faker = \Faker\Factory::create();
+
         $contents = [
             'judge' => [
                 'قدمت حججاً قوية ومنظمة، وكان أسلوبك في الإقناع ممتازاً. تحتاج إلى تطوير ردودك على حجج الخصم.',
@@ -103,6 +105,6 @@ class FeedbackSeeder extends Seeder
             ],
         ];
 
-        return fake()->randomElement($contents[$type]);
+        return $faker->randomElement($contents[$type]);
     }
 }

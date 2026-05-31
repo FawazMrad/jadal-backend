@@ -13,6 +13,7 @@ class SurveySeeder extends Seeder
     public function run(): void
     {
         try {
+            $faker  = \Faker\Factory::create();
             $admins = User::where('role', 'admin')->get();
 
             if ($admins->isEmpty()) {
@@ -58,9 +59,9 @@ class SurveySeeder extends Seeder
                     foreach ($surveyData['questions'] as $qIdx => $qData) {
                         $key = 'q' . ($qIdx + 1);
                         $answers[$key] = match ($qData['type']) {
-                            'mcq'       => fake()->randomElement($qData['options'] ?? ['موافق', 'محايد', 'غير موافق']),
+                            'mcq'       => $faker->randomElement($qData['options'] ?? ['موافق', 'محايد', 'غير موافق']),
                             'rating'    => (string) rand(1, 10),
-                            'open_text' => fake()->randomElement([
+                            'open_text' => $faker->randomElement([
                                 'تجربة رائعة ومفيدة جداً.',
                                 'البرنامج يحتاج إلى بعض التحسينات.',
                                 'أرجو تنظيم المزيد من الفعاليات.',

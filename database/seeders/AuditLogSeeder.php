@@ -13,6 +13,7 @@ class AuditLogSeeder extends Seeder
     public function run(): void
     {
         try {
+            $faker   = \Faker\Factory::create();
             $admins  = User::where('role', 'admin')->get();
             $users   = User::all();
             $debates = Debate::all();
@@ -30,7 +31,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $user->id,
                     'old_values'  => null,
                     'new_values'  => ['name' => $user->name, 'role' => $user->role, 'status' => 'active'],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => $user->created_at ?? now(),
                 ]);
                 $count++;
@@ -45,7 +46,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $user->id,
                     'old_values'  => ['status' => 'active'],
                     'new_values'  => ['status' => $user->status],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => now()->subDays(rand(1, 30)),
                 ]);
                 $count++;
@@ -60,7 +61,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $debate->id,
                     'old_values'  => null,
                     'new_values'  => ['title' => $debate->title, 'status' => $debate->status],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => $debate->created_at ?? now(),
                 ]);
                 $count++;
@@ -75,7 +76,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $debate->id,
                     'old_values'  => ['status' => 'scheduled'],
                     'new_values'  => ['status' => $debate->status],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => now()->subDays(rand(1, 60)),
                 ]);
                 $count++;
@@ -90,7 +91,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $team->id,
                     'old_values'  => null,
                     'new_values'  => ['name' => $team->name, 'status' => $team->status],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => $team->created_at ?? now(),
                 ]);
                 $count++;
@@ -105,7 +106,7 @@ class AuditLogSeeder extends Seeder
                     'entity_id'   => $user->id,
                     'old_values'  => null,
                     'new_values'  => ['last_login' => now()->subDays(rand(0, 7))->toDateTimeString()],
-                    'ip_address'  => fake()->randomElement($ipPool),
+                    'ip_address'  => $faker->randomElement($ipPool),
                     'created_at'  => now()->subDays(rand(0, 7)),
                 ]);
                 $count++;

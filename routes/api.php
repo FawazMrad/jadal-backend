@@ -155,6 +155,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/',            [TrainerSurveyController::class, 'index'])   ->name('index');
         Route::post('/',           [TrainerSurveyController::class, 'store'])   ->name('store');
         Route::get('/{survey}',    [TrainerSurveyController::class, 'show'])    ->name('show');
+        Route::put('/{survey}',    [TrainerSurveyController::class, 'update'])  ->name('update');
         Route::delete('/{survey}', [TrainerSurveyController::class, 'destroy']) ->name('destroy');
         Route::get('/{survey}/results', [TrainerSurveyController::class, 'results']) ->name('results');
 
@@ -208,6 +209,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::get('/',            [AdminSurveyController::class, 'index'])   ->name('index');
             Route::post('/',           [AdminSurveyController::class, 'store'])   ->name('store');
             Route::get('/{survey}',    [AdminSurveyController::class, 'show'])    ->name('show');
+            Route::put('/{survey}',    [AdminSurveyController::class, 'update'])  ->name('update');
             Route::delete('/{survey}', [AdminSurveyController::class, 'destroy']) ->name('destroy');
             Route::get('/{survey}/results', [AdminSurveyController::class, 'results']) ->name('results');
 

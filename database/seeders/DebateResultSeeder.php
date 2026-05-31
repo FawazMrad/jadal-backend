@@ -12,6 +12,7 @@ class DebateResultSeeder extends Seeder
     public function run(): void
     {
         try {
+            $faker            = \Faker\Factory::create();
             $completedDebates = Debate::where('status', 'completed')->get();
             $count            = 0;
 
@@ -35,7 +36,7 @@ class DebateResultSeeder extends Seeder
                     continue;
                 }
 
-                $winningSide = fake()->randomElement(['proposition', 'opposition', 'draw']);
+                $winningSide = $faker->randomElement(['proposition', 'opposition', 'draw']);
 
                 DebateResult::create([
                     'debate_id'    => $debate->id,
@@ -54,7 +55,7 @@ class DebateResultSeeder extends Seeder
                         ],
                     ],
                     'summary_notes' => rand(0, 1)
-                        ? 'كانت المناظرة متوازنة وقدم الفريقان حججاً قوية. ' . fake()->sentence(15)
+                        ? 'كانت المناظرة متوازنة وقدم الفريقان حججاً قوية. ' . $faker->sentence(15)
                         : null,
                     'submitted_at' => $debate->ended_at ?? now(),
                 ]);

@@ -51,6 +51,8 @@ class EvaluationSeeder extends Seeder
 
     private function randomEvaluationNote(): string
     {
+        $faker = \Faker\Factory::create();
+
         $notes = [
             'المتدرب يُظهر تقدماً ملحوظاً في مهارات التفكير النقدي وبناء الحجة. يُنصح بالتركيز أكثر على مهارات الإلقاء والتواصل مع الجمهور.',
             'أداء جيد بشكل عام. المتدرب لديه قدرة تحليلية جيدة لكن يحتاج إلى تطوير ثقته بنفسه أثناء الحديث العلني.',
@@ -59,6 +61,6 @@ class EvaluationSeeder extends Seeder
             'Good understanding of the topic with well-structured arguments. Work on rebuttal techniques and responding under pressure.',
         ];
 
-        return fake()->randomElement($notes);
+        return $faker->randomElement($notes);
     }
 }

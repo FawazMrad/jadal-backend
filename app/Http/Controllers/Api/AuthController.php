@@ -12,10 +12,9 @@ use App\Models\User;
 use App\Services\GoogleTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use RuntimeException;
-use Illuminate\Auth\Notifications\ResetPassword;
 
 class AuthController extends Controller
 {
@@ -97,39 +96,47 @@ class AuthController extends Controller
             return response()->json(['success' => true, 'message' => 'If this email exists, a reset link has been sent.']);
         }
 
-        // Generate token manually
-        $token = Password::createToken($user);
-        // Send password reset email
-        $user->sendPasswordResetNotification($token);
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        Cache::put('password_reset:' . $user->email, $code, now()->addMinutes(60));
+        $user->sendPasswordResetNotification($code);
 
         return response()->json([
             'success' => true,
-            'message' => 'If this email exists, a reset link has been sent.',
+            'message' => 'If this email exists, a reset code has been sent.',
         ]);
     }
     // ── Reset Password ────────────────────────────────────────────────────────
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function (User $user, string $password): void {
-                $user->forceFill(['password' => $password])->save();
-                $user->tokens()->delete(); // Revoke all tokens — forces fresh login
-            }
-        );
+        $cacheKey = 'password_reset:' . $request->email;
+        $cached   = Cache::get($cacheKey);
 
-        if ($status === Password::PASSWORD_RESET) {
-            return $this->success(
-                null,
-                'تم إعادة تعيين كلمة المرور بنجاح. | Password has been reset successfully.'
+        if (! $cached || $cached !== $request->token) {
+            return $this->error(
+                'الرمز غير صالح أو منتهي الصلاحية. | Invalid or expired reset code.',
+                [],
+                422
             );
         }
 
-        return $this->error(
-            'الرابط غير صالح أو منتهي الصلاحية. | Invalid or expired password reset token.',
-            ['token' => __($status)],
-            422
+        $user = User::where('email', $request->email)->first();
+
+        if (! $user) {
+            return $this->error(
+                'الرمز غير صالح أو منتهي الصلاحية. | Invalid or expired reset code.',
+                [],
+                422
+            );
+        }
+
+        $user->forceFill(['password' => $request->password])->save();
+        $user->tokens()->delete();
+        Cache::forget($cacheKey);
+
+        return $this->success(
+            null,
+            'تم إعادة تعيين كلمة المرور بنجاح. | Password has been reset successfully.'
         );
     }
 

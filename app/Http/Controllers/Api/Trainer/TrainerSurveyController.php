@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Survey\StoreQuestionRequest;
 use App\Http\Requests\Survey\StoreSurveyRequest;
 use App\Http\Requests\Survey\UpdateQuestionRequest;
+use App\Http\Requests\Survey\UpdateSurveyRequest;
 use App\Http\Resources\SurveyDetailResource;
 use App\Http\Resources\SurveyResource;
 use App\Http\Resources\SurveyResultResource;
@@ -76,6 +77,54 @@ class TrainerSurveyController extends Controller
         return $this->success(
             new SurveyDetailResource($survey),
             'تم جلب الاستطلاع. | Survey retrieved.'
+        );
+    }
+
+    // ── Update own survey + questions ─────────────────────────────────────────
+
+    public function update(UpdateSurveyRequest $request, Survey $survey): JsonResponse
+    {
+        if ($survey->created_by !== $request->user()->id) {
+            return $this->error('غير مصرح. | Unauthorized.', [], 403);
+        }
+
+        $data = $request->validated();
+
+        $survey->update(array_filter([
+            'title'       => $data['title'] ?? null,
+            'description' => array_key_exists('description', $data) ? $data['description'] : $survey->description,
+            'closes_at'   => array_key_exists('closes_at', $data) ? $data['closes_at'] : $survey->closes_at,
+        ], fn ($v, $k) => $request->has($k), ARRAY_FILTER_USE_BOTH));
+
+        if ($request->has('team_ids')) {
+            DB::table('survey_teams')->where('survey_id', $survey->id)->delete();
+            if (count($data['team_ids'])) {
+                DB::table('survey_teams')->insert(
+                    collect($data['team_ids'])
+                        ->map(fn ($teamId) => ['survey_id' => $survey->id, 'team_id' => $teamId])
+                        ->toArray()
+                );
+            }
+        }
+
+        if ($request->has('questions')) {
+            $survey->questions()->delete();
+
+            foreach ($data['questions'] as $i => $q) {
+                $survey->questions()->create([
+                    'question_text' => $q['question_text'],
+                    'type'          => $q['type'],
+                    'options'       => $q['options'] ?? null,
+                    'order_index'   => $q['order_index'] ?? $i,
+                ]);
+            }
+        }
+
+        $survey->load(['createdBy', 'questions']);
+
+        return $this->success(
+            new SurveyDetailResource($survey),
+            'تم تحديث الاستطلاع. | Survey updated.'
         );
     }
 

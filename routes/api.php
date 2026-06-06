@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateController;
+use App\Http\Controllers\Api\LiveKitController;
 use App\Http\Controllers\Api\DebateFormatController;
 use App\Http\Controllers\Api\EvaluationController;
 use App\Http\Controllers\Api\FeedbackController;
@@ -108,6 +109,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/{debate}',               [DebateController::class, 'show'])         ->name('show');
         Route::post('/{debate}/register',     [DebateController::class, 'register'])     ->name('register');
         Route::post('/{debate}/result',       [DebateController::class, 'submitResult']) ->name('result');
+        Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])    ->name('token');
     });
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\AdminDebateController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateController;
@@ -84,6 +85,9 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/{survey}',          [SurveyController::class, 'show'])    ->name('show');
         Route::post('/{survey}/respond', [SurveyController::class, 'respond']) ->name('respond');
     });
+
+    // ── Search ────────────────────────────────────────────────────────────────
+    Route::get('/search', [SearchController::class, 'index'])->name('search');
 
     // ── Debate formats — read (any auth user) ────────────────────────────────
     Route::prefix('debate-formats')->name('debate-formats.')->group(function (): void {

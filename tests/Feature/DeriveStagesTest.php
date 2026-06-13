@@ -78,10 +78,11 @@ class DeriveStagesTest extends TestCase
         $stages = $format->deriveStages();
 
         $this->assertFalse($stages[5]['is_reply']); // stage 6 — last regular
-        $this->assertTrue($stages[6]['is_reply']);  // stage 7 — prop reply
-        $this->assertTrue($stages[7]['is_reply']);  // stage 8 — opp reply
-        $this->assertEquals('proposition', $stages[6]['role']);
-        $this->assertEquals('opposition',  $stages[7]['role']);
+        $this->assertTrue($stages[6]['is_reply']);  // stage 7 — opposition reply (FIRST)
+        $this->assertTrue($stages[7]['is_reply']);  // stage 8 — proposition reply (SECOND)
+        // Reply order is intentionally inverted vs the main speeches.
+        $this->assertEquals('opposition',  $stages[6]['role']);
+        $this->assertEquals('proposition', $stages[7]['role']);
     }
 
     public function test_order_indexes_are_sequential(): void

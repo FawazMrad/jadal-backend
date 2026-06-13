@@ -15,6 +15,7 @@ class DebateResult extends Model
     protected $fillable = [
         'debate_id',
         'judge_id',
+        'contributing_judges',
         'winning_side',
         'scores',
         'summary_notes',
@@ -24,9 +25,10 @@ class DebateResult extends Model
     protected function casts(): array
     {
         return [
-            'scores'       => 'array',
-            'winning_side' => 'string',
-            'submitted_at' => 'datetime',
+            'scores'              => 'array',
+            'contributing_judges' => 'array',
+            'winning_side'        => 'string',
+            'submitted_at'        => 'datetime',
         ];
     }
 

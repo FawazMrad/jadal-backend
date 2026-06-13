@@ -13,6 +13,7 @@ class DebateResultResource extends JsonResource
             'id'            => $this->id,
             'debate_id'     => $this->debate_id,
             'judge'         => new UserResource($this->whenLoaded('judge')),
+            'contributing_judges' => $this->contributing_judges,
             'winning_side'  => $this->winning_side,
             'scores'        => $this->scores,
             'summary_notes' => $this->summary_notes,

@@ -22,7 +22,7 @@ class ChairElectionTest extends TestCase
         });
     }
 
-    private function makeDebate(): Debate
+    private function makeDebate(string $status = 'live'): Debate
     {
         $format = DebateFormat::factory()->create([
             'phase_config' => [
@@ -36,14 +36,15 @@ class ChairElectionTest extends TestCase
 
         return Debate::factory()->create([
             'format_id'        => $format->id,
-            'status'           => 'live',
+            'status'           => $status,
             'livekit_room_name' => 'debate-election-main',
         ]);
     }
 
     public function test_admin_can_set_judge_order(): void
     {
-        $debate = $this->makeDebate();
+        // Judge ordering is only allowed before the debate goes live.
+        $debate = $this->makeDebate('announced');
         $admin  = User::factory()->create(['role' => 'admin', 'status' => 'active']);
 
         $judge1 = User::factory()->create(['role' => 'judge', 'status' => 'active']);
@@ -114,7 +115,7 @@ class ChairElectionTest extends TestCase
 
     public function test_only_approved_judges_can_be_given_order(): void
     {
-        $debate = $this->makeDebate();
+        $debate = $this->makeDebate('announced');
         $admin  = User::factory()->create(['role' => 'admin', 'status' => 'active']);
 
         $debater = User::factory()->create(['role' => 'debater', 'status' => 'active']);

@@ -53,17 +53,19 @@ class DebateFormat extends Model
         }
 
         if ($this->phase_config['has_reply_speech'] ?? false) {
+            // Reply order is intentionally INVERTED vs the main speeches:
+            // Opposition reply comes FIRST, Proposition reply comes SECOND.
             $stages[] = [
                 'order_index'      => ++$order,
-                'name'             => 'Proposition Reply',
-                'role'             => 'proposition',
+                'name'             => 'Opposition Reply',
+                'role'             => 'opposition',
                 'is_reply'         => true,
                 'duration_seconds' => $this->phase_config['reply_time_seconds'],
             ];
             $stages[] = [
                 'order_index'      => ++$order,
-                'name'             => 'Opposition Reply',
-                'role'             => 'opposition',
+                'name'             => 'Proposition Reply',
+                'role'             => 'proposition',
                 'is_reply'         => true,
                 'duration_seconds' => $this->phase_config['reply_time_seconds'],
             ];

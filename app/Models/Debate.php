@@ -34,6 +34,7 @@ class Debate extends Model
         'motion_revealed_at',
         'prep_rooms_opened_at',
         'result_revealed_at',
+        'cancellation_reason',
     ];
 
     protected function casts(): array

@@ -63,45 +63,68 @@ class AdminDebateController extends Controller
 
     public function assignParticipants(AssignParticipantsRequest $request, Debate $debate): JsonResponse
     {
-        foreach ($request->participants as $p) {
-            $attrs = [
-                'team_id'              => $p['team_id'] ?? null,
-                'role'                 => $p['role'],
-                'side'                 => $p['side'],
-                'status'               => 'approved',
-                'is_chair'             => $p['is_chair'] ?? false,
-                'is_attended'          => false,
-                'speaking_phase_order' => null,
-                'judge_order'          => isset($p['judge_order']) ? (int) $p['judge_order'] : null,
-            ];
+        DB::transaction(function () use ($request, $debate) {
+            // Judges missing an explicit judge_order get the next monotonic value.
+            $nextJudgeOrder = $this->nextJudgeOrder($request->participants, $debate);
 
-            DebateParticipant::updateOrCreate(
-                ['debate_id' => $debate->id, 'user_id' => $p['user_id']],
-                $attrs
-            );
+            foreach ($request->participants as $p) {
+                $judgeOrder = null;
+                if (($p['role'] ?? null) === 'judge') {
+                    $judgeOrder = isset($p['judge_order'])
+                        ? (int) $p['judge_order']
+                        : $nextJudgeOrder++;
+                }
 
-            if (! empty($p['team_id'])) {
-                $memberIds = TeamMember::where('team_id', $p['team_id'])
-                    ->where('status', 'active')
-                    ->where('user_id', '!=', $p['user_id'])
-                    ->pluck('user_id');
+                $attrs = [
+                    'team_id'              => $p['team_id'] ?? null,
+                    'role'                 => $p['role'],
+                    'side'                 => $p['side'],
+                    'status'               => 'approved',
+                    'is_chair'             => $p['is_chair'] ?? false,
+                    'is_attended'          => false,
+                    'speaking_phase_order' => null,
+                    'judge_order'          => $judgeOrder,
+                ];
 
-                foreach ($memberIds as $memberId) {
-                    DebateParticipant::updateOrCreate(
-                        ['debate_id' => $debate->id, 'user_id' => $memberId],
-                        [
-                            'team_id'              => $p['team_id'],
-                            'role'                 => $p['role'],
-                            'side'                 => $p['side'],
-                            'status'               => 'approved',
-                            'is_chair'             => false,
-                            'is_attended'          => false,
-                            'speaking_phase_order' => null,
-                        ]
-                    );
+                DebateParticipant::updateOrCreate(
+                    ['debate_id' => $debate->id, 'user_id' => $p['user_id']],
+                    $attrs
+                );
+
+                if (! empty($p['team_id'])) {
+                    $memberIds = TeamMember::where('team_id', $p['team_id'])
+                        ->where('status', 'active')
+                        ->where('user_id', '!=', $p['user_id'])
+                        ->pluck('user_id');
+
+                    foreach ($memberIds as $memberId) {
+                        DebateParticipant::updateOrCreate(
+                            ['debate_id' => $debate->id, 'user_id' => $memberId],
+                            [
+                                'team_id'              => $p['team_id'],
+                                'role'                 => $p['role'],
+                                'side'                 => $p['side'],
+                                'status'               => 'approved',
+                                'is_chair'             => false,
+                                'is_attended'          => false,
+                                'speaking_phase_order' => null,
+                            ]
+                        );
+                    }
                 }
             }
-        }
+
+            // Admin-driven status bump: once both sides have an approved debater and
+            // there is at least one approved judge, the debate is "announced".
+            $hasPropDebaters  = $debate->participants()->where('side', 'proposition')->where('role', 'debater')->where('status', 'approved')->exists();
+            $hasOppDebaters   = $debate->participants()->where('side', 'opposition')->where('role', 'debater')->where('status', 'approved')->exists();
+            $hasApprovedJudge = $debate->participants()->where('role', 'judge')->where('status', 'approved')->exists();
+
+            if ($debate->status === 'scheduled' && $hasPropDebaters && $hasOppDebaters && $hasApprovedJudge) {
+                $debate->status = 'announced';
+                $debate->save();
+            }
+        });
 
         $debate->load('participants.user');
 
@@ -109,6 +132,24 @@ class AdminDebateController extends Controller
             DebateParticipantResource::collection($debate->participants),
             'تم تعيين المشاركين. | Participants assigned.'
         );
+    }
+
+    /**
+     * Highest existing judge_order across the incoming payload and the debate's
+     * already-assigned judges, plus one. Keeps ordering monotonic when some
+     * judges omit an explicit order.
+     */
+    private function nextJudgeOrder(array $participants, Debate $debate): int
+    {
+        $payloadMax = collect($participants)
+            ->filter(fn ($p) => ($p['role'] ?? null) === 'judge' && isset($p['judge_order']))
+            ->max('judge_order') ?? 0;
+
+        $existingMax = (int) $debate->participants()
+            ->where('role', 'judge')
+            ->max('judge_order');
+
+        return max((int) $payloadMax, $existingMax) + 1;
     }
 
     public function updateParticipantStatus(
@@ -135,8 +176,16 @@ class AdminDebateController extends Controller
         $request->validate([
             'judges'                   => ['required', 'array', 'min:1'],
             'judges.*.participant_id'  => ['required', 'integer'],
-            'judges.*.judge_order'     => ['required', 'integer', 'min:1'],
+            'judges.*.judge_order'     => ['required', 'integer', 'min:1', 'distinct'],
         ]);
+
+        // Judge ordering can only change before the debate goes live.
+        if (in_array($debate->status, ['live', 'completed', 'cancelled'], true)) {
+            return $this->error(
+                'لا يمكن تغيير ترتيب القضاة إلا قبل بدء النقاش. | Judge ordering can only be changed before the debate goes live.',
+                [], 422
+            );
+        }
 
         // Verify all participant_ids are approved judges on this debate.
         $approvedJudgeIds = DebateParticipant::where('debate_id', $debate->id)
@@ -176,6 +225,14 @@ class AdminDebateController extends Controller
 
             if ($chair) {
                 $chair->update(['is_chair' => true]);
+
+                // Notify the main room that the chair changed.
+                try {
+                    app(\App\Services\LiveKitService::class)->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        ['event' => 'chair_elected', 'chair_user_id' => (int) $chair->user_id]
+                    );
+                } catch (\Throwable) {}
             }
         });
 

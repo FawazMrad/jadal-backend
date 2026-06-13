@@ -14,6 +14,7 @@ class DebateResource extends JsonResource
             'title'            => $this->title,
             'tag'              => $this->tag,
             'status'           => $this->status,
+            'cancellation_reason' => $this->cancellation_reason,
             'livekit_room_name'=> $this->livekit_room_name,
             'format'           => new DebateFormatResource($this->whenLoaded('format')),
             'motion'           => $this->whenLoaded('motion', fn() => [

@@ -124,9 +124,11 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/{debate}/live-state',              [LiveDebateController::class, 'state'])          ->name('live-state');
         Route::post('/{debate}/team-speakers',          [LiveDebateController::class, 'setTeamSpeakers'])->name('team-speakers');
         Route::post('/{debate}/next-stage',             [LiveDebateController::class, 'nextStage'])      ->name('next-stage');
+        Route::post('/{debate}/rollback-to-lobby',      [LiveDebateController::class, 'rollbackToLobby'])->name('rollback-to-lobby');
         Route::post('/{debate}/stages/{stage}/poi',     [LiveDebateController::class, 'reportPoi'])      ->name('stages.poi');
         Route::post('/{debate}/result',                 [LiveDebateController::class, 'submitResult'])   ->name('result');
         Route::post('/{debate}/result/reveal',          [LiveDebateController::class, 'revealResult'])   ->name('result.reveal');
+        Route::post('/{debate}/close-main',             [LiveDebateController::class, 'closeMain'])      ->name('close-main');
     });
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────

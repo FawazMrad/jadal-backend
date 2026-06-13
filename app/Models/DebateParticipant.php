@@ -25,6 +25,7 @@ class DebateParticipant extends Pivot
         'is_attended',
         'speaking_phase_order',
         'judge_order',
+        'is_reply_speaker',
     ];
 
     protected function casts(): array
@@ -34,6 +35,7 @@ class DebateParticipant extends Pivot
             'is_attended'         => 'boolean',
             'speaking_phase_order' => 'integer',
             'judge_order'         => 'integer',
+            'is_reply_speaker'    => 'boolean',
             'role'                => 'string',
             'side'                => 'string',
             'status'              => 'string',

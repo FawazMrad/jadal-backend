@@ -36,14 +36,18 @@ class LiveStateTest extends TestCase
         ]);
     }
 
-    public function test_non_participant_cannot_access_live_state(): void
+    public function test_non_participant_can_access_live_state_as_viewer(): void
     {
+        // V2: live-state is open to any authenticated user. Sensitive bits are
+        // hidden inside the payload, not via a 403.
         $debate = $this->makeDebate();
         $user   = User::factory()->create(['role' => 'debater', 'status' => 'active']);
 
         $response = $this->actingAs($user)->getJson("/api/debates/{$debate->id}/live-state");
 
-        $response->assertStatus(403);
+        $response->assertStatus(200);
+        // A non-participant can still join the main room as a viewer.
+        $this->assertTrue($response->json('data.rooms.main.joinable_for_me'));
     }
 
     public function test_admin_can_access_live_state_without_being_participant(): void
@@ -93,10 +97,18 @@ class LiveStateTest extends TestCase
     public function test_motion_hidden_before_reveal_time(): void
     {
         $debate = $this->makeDebate('scheduled');
-        // motion_revealed_at is null by default.
-        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        // motion_revealed_at is null by default. Admins always see the motion, so
+        // use a non-admin participant to verify the pre-reveal hiding.
+        $debater = User::factory()->create(['role' => 'debater', 'status' => 'active']);
+        DebateParticipant::factory()->create([
+            'debate_id' => $debate->id,
+            'user_id'   => $debater->id,
+            'role'      => 'debater',
+            'side'      => 'proposition',
+            'status'    => 'approved',
+        ]);
 
-        $response = $this->actingAs($admin)->getJson("/api/debates/{$debate->id}/live-state");
+        $response = $this->actingAs($debater)->getJson("/api/debates/{$debate->id}/live-state");
 
         $response->assertStatus(200);
         $this->assertNull($response->json('data.motion'));

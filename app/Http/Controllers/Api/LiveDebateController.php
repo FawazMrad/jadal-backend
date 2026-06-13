@@ -30,7 +30,7 @@ class LiveDebateController extends Controller
 
         $debate->load([
             'format',
-            'motion',
+            'motion.frameworks',
             'participants.user',
             'phases',
             'result.judge',
@@ -39,11 +39,8 @@ class LiveDebateController extends Controller
         $myParticipant = $debate->participants
             ->firstWhere('user_id', $user->id);
 
-        // Non-admin users who have never been assigned must at least exist.
-        if (! $myParticipant && $user->role !== 'admin') {
-            return $this->error('غير مصرح. | Not a participant of this debate.', [], 403);
-        }
-
+        // Any authenticated user can read the live-state. Visibility of sensitive
+        // bits (motion, result, joinable rooms) is enforced inside the resource.
         return $this->success(
             new LiveStateResource($debate, $myParticipant),
             'Live state retrieved.'
@@ -103,23 +100,33 @@ class LiveDebateController extends Controller
             }
         }
 
-        DB::transaction(function () use ($sideParticipants, $speakerIds, $side) {
-            // Reset all speaking orders for this side.
+        $replySpeakerId = $request->reply_speaker_user_id; // null when format has no reply
+
+        DB::transaction(function () use ($sideParticipants, $speakerIds, $side, $replySpeakerId) {
+            $debateId = $sideParticipants->first()->debate_id;
+
+            // Reset speaking orders AND reply-speaker flag for this side.
             DebateParticipant::whereIn('id', $sideParticipants->pluck('id'))
-                ->update(['speaking_phase_order' => null]);
+                ->update(['speaking_phase_order' => null, 'is_reply_speaker' => false]);
 
             // Assign new order (1-based array position).
             foreach ($speakerIds as $order => $userId) {
-                DebateParticipant::where('debate_id', $sideParticipants->first()->debate_id)
+                DebateParticipant::where('debate_id', $debateId)
                     ->where('user_id', $userId)
                     ->where('side', $side)
                     ->update(['speaking_phase_order' => $order + 1]);
             }
+
+            // Flag the chosen reply speaker (validated to be slot 1 or 2).
+            if ($replySpeakerId) {
+                DebateParticipant::where('debate_id', $debateId)
+                    ->where('user_id', $replySpeakerId)
+                    ->where('side', $side)
+                    ->update(['is_reply_speaker' => true]);
+            }
         });
 
-        // TODO: reply-speaker override is out of scope — speaker #1 is the default reply speaker.
-
-        $debate->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', request()->user()->id);
 
         return $this->success(
@@ -245,10 +252,31 @@ class LiveDebateController extends Controller
                 );
             } catch (\Throwable) {}
 
+            // First transition out of the lobby (stage 0 → 1): close prep rooms on
+            // LiveKit and signal the frontend to switch into debate mode.
+            if ($nextStage === 1) {
+                try {
+                    $svc = app(LiveKitService::class);
+                    if ($debate->prop_room_name) {
+                        $svc->deleteRoomIfExists($debate->prop_room_name);
+                    }
+                    if ($debate->opp_room_name) {
+                        $svc->deleteRoomIfExists($debate->opp_room_name);
+                    }
+                } catch (\Throwable) {}
+
+                try {
+                    app(LiveKitService::class)->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        ['event' => 'debate_mode_started']
+                    );
+                } catch (\Throwable) {}
+            }
+
             return $debate->fresh();
         });
 
-        $result->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $result->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
         $myParticipant = $result->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -359,11 +387,27 @@ class LiveDebateController extends Controller
             ];
         }
 
-        $result = DB::transaction(function () use ($request, $debate, $user, $stageData) {
+        // Snapshot every attended approved judge — the whole panel contributed,
+        // not just the chair who clicked submit.
+        $contributingJudges = $debate->participants()
+            ->where('role', 'judge')
+            ->where('status', 'approved')
+            ->where('is_attended', true)
+            ->get(['user_id', 'judge_order', 'is_chair'])
+            ->map(fn ($j) => [
+                'user_id'     => (int) $j->user_id,
+                'judge_order' => $j->judge_order,
+                'is_chair'    => (bool) $j->is_chair,
+            ])
+            ->values()
+            ->all();
+
+        $result = DB::transaction(function () use ($request, $debate, $user, $stageData, $contributingJudges) {
             return DebateResult::create([
-                'debate_id'     => $debate->id,
-                'judge_id'      => $user->id,
-                'winning_side'  => $request->winning_side,
+                'debate_id'           => $debate->id,
+                'judge_id'            => $user->id,
+                'contributing_judges' => $contributingJudges,
+                'winning_side'        => $request->winning_side,
                 'scores'        => [
                     'stages' => $stageData,
                     'notes'  => $request->summary_notes,
@@ -426,7 +470,7 @@ class LiveDebateController extends Controller
             );
         } catch (\Throwable) {}
 
-        $debate->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -435,7 +479,143 @@ class LiveDebateController extends Controller
         );
     }
 
+    // ── V2: POST /debates/{debate}/rollback-to-lobby ──────────────────────────
+
+    public function rollbackToLobby(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $chair = $this->chairParticipant($debate, $user->id);
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه العودة إلى اللوبي. | Only the chair judge can return to the lobby.', [], 403);
+        }
+
+        if ($debate->status !== 'live' || $debate->current_stage < 1) {
+            return $this->error('لا يمكن العودة إلى اللوبي إلا أثناء النقاش. | Can only roll back to the lobby during a live debate.', [], 422);
+        }
+
+        DB::transaction(function () use ($debate) {
+            // Reset the currently active phase back to pending.
+            $activePhase = DebatePhase::where('debate_id', $debate->id)
+                ->where('order_index', $debate->current_stage)
+                ->first();
+
+            if ($activePhase) {
+                if ($activePhase->egress_id) {
+                    try {
+                        $this->liveKit->stopEgress($activePhase->egress_id);
+                    } catch (\Throwable) {
+                        // Non-fatal — egress may have already ended.
+                    }
+                }
+
+                $activePhase->update([
+                    'status'         => 'pending',
+                    'started_at'     => null,
+                    'participant_id' => null,
+                    'egress_id'      => null,
+                    'audio_url'      => null,
+                ]);
+            }
+
+            $debate->update(['current_stage' => 0]);
+
+            // Re-open the prep rooms that were closed when the debate started.
+            try {
+                if ($debate->prop_room_name) {
+                    $this->liveKit->createRoomIfMissing($debate->prop_room_name);
+                }
+                if ($debate->opp_room_name) {
+                    $this->liveKit->createRoomIfMissing($debate->opp_room_name);
+                }
+            } catch (\Throwable) {}
+
+            // Tell the frontend to drop back to lobby UI.
+            try {
+                $this->liveKit->sendDataToRoom(
+                    $debate->livekit_room_name,
+                    ['event' => 'returned_to_lobby']
+                );
+            } catch (\Throwable) {}
+        });
+
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم الرجوع إلى اللوبي. | Returned to lobby.'
+        );
+    }
+
+    // ── V2: POST /debates/{debate}/close-main ─────────────────────────────────
+
+    public function closeMain(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $chair = $this->chairParticipant($debate, $user->id);
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه إغلاق الغرفة الرئيسية. | Only the chair judge can close the main room.', [], 403);
+        }
+
+        if ($debate->status !== 'completed') {
+            return $this->error('لا يمكن إغلاق الغرفة الرئيسية إلا بعد انتهاء النقاش. | Main room can only be closed after the debate is completed.', [], 422);
+        }
+
+        DB::transaction(function () use ($debate) {
+            // Close the main room on LiveKit.
+            if ($debate->livekit_room_name) {
+                try {
+                    $this->liveKit->deleteRoomIfExists($debate->livekit_room_name);
+                } catch (\Throwable) {}
+            }
+
+            // If a result exists but hasn't been revealed yet, reveal it now.
+            if ($debate->result()->exists() && $debate->result_revealed_at === null) {
+                $debate->update(['result_revealed_at' => now()]);
+
+                // Main room is gone — broadcast the reveal on the result room instead.
+                if ($debate->result_room_name) {
+                    try {
+                        $this->liveKit->sendDataToRoom(
+                            $debate->result_room_name,
+                            ['event' => 'result_revealed']
+                        );
+                    } catch (\Throwable) {}
+                }
+            } elseif (! $debate->result()->exists()) {
+                // Edge case: closing main with no result submitted reveals nothing.
+                \Illuminate\Support\Facades\Log::warning(
+                    "Debate {$debate->id}: main room closed before any result was submitted."
+                );
+            }
+        });
+
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم إغلاق الغرفة الرئيسية. | Main room closed.'
+        );
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Return the chair participant for this debate if the given user is the
+     * approved, chair judge — otherwise null.
+     */
+    private function chairParticipant(Debate $debate, int $userId): ?DebateParticipant
+    {
+        return DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $userId)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->where('status', 'approved')
+            ->first();
+    }
 
     /**
      * Derive which approved participant should be the speaker for a given phase.
@@ -452,8 +632,22 @@ class LiveDebateController extends Controller
 
         // Determine side and speaker slot from order_index.
         if ($isReply) {
-            $side        = str_contains(strtolower($phase->name), 'opposition') ? 'opposition' : 'proposition';
-            $speakerSlot = 1; // Reply speaker is always speaker #1 by default.
+            $side = str_contains(strtolower($phase->name), 'opposition') ? 'opposition' : 'proposition';
+
+            // Reply speaker is the participant explicitly flagged is_reply_speaker.
+            $replySpeaker = DebateParticipant::where('debate_id', $debate->id)
+                ->where('side', $side)
+                ->where('role', 'debater')
+                ->where('status', 'approved')
+                ->where('is_reply_speaker', true)
+                ->first();
+
+            if ($replySpeaker) {
+                return $replySpeaker;
+            }
+
+            // Defensive fallback: speaker #1 if no explicit reply speaker is set.
+            $speakerSlot = 1;
         } else {
             // Odd order_index → proposition; even → opposition.
             $side        = ($orderIndex % 2 === 1) ? 'proposition' : 'opposition';

@@ -37,6 +37,7 @@ class LiveStateResource extends JsonResource
                 'motion_revealed_at'   => $debate->motion_revealed_at?->toIso8601String(),
                 'prep_rooms_opened_at' => $debate->prep_rooms_opened_at?->toIso8601String(),
                 'result_revealed_at'   => $debate->result_revealed_at?->toIso8601String(),
+                'cancellation_reason'  => $debate->cancellation_reason,
                 'current_stage'        => $debate->current_stage,
             ],
 
@@ -50,11 +51,7 @@ class LiveStateResource extends JsonResource
                 'total_stages'                 => $totalStages,
             ] : null,
 
-            'motion' => $debate->motion_revealed_at
-                ? ($debate->relationLoaded('motion') && $debate->motion
-                    ? ['id' => $debate->motion->id, 'text' => $debate->motion->text]
-                    : null)
-                : null,
+            'motion' => $this->buildMotion($request),
 
             'rooms' => $this->buildRooms($request),
 
@@ -70,6 +67,38 @@ class LiveStateResource extends JsonResource
         ];
     }
 
+    /**
+     * Motion is visible once it has been revealed (motion_revealed_at set), or
+     * always to admins. Includes frameworks; `tags` mirrors framework names for
+     * a backward-friendly flat list.
+     */
+    private function buildMotion(Request $request): ?array
+    {
+        $debate = $this->debate;
+        $user   = $request->user();
+
+        $visible = $debate->motion_revealed_at !== null
+            || ($user && $user->role === 'admin');
+
+        if (! $visible || ! $debate->relationLoaded('motion') || ! $debate->motion) {
+            return null;
+        }
+
+        $motion     = $debate->motion;
+        $frameworks = $motion->relationLoaded('frameworks') ? $motion->frameworks : collect();
+
+        return [
+            'id'         => $motion->id,
+            'text'       => $motion->text,
+            'tags'       => $frameworks->pluck('name')->values()->all(),
+            'frameworks' => $frameworks->map(fn ($f) => [
+                'id'        => $f->id,
+                'name'      => $f->name,
+                'color_hex' => $f->color_hex,
+            ])->values()->all(),
+        ];
+    }
+
     private function buildRooms(Request $request): array
     {
         $debate = $this->debate;
@@ -79,14 +108,22 @@ class LiveStateResource extends JsonResource
         $now    = now();
         $isApproved = $p && $p->status === 'approved';
 
-        $mainOpen = $debate->status === 'live' && $debate->current_stage > 0;
-        $prepOpen = in_array($debate->status, ['teams-selected', 'live'])
-            && $debate->prep_rooms_opened_at
-            && $debate->prep_rooms_opened_at->lte($now);
+        // Main room is open for the whole `live` status (lobby at stage 0, debate after).
+        $mainOpen = $debate->status === 'live';
+
+        // Prep rooms are ONLY open during the lobby (current_stage === 0). They close
+        // when the chair starts stage 1 and re-open on rollback-to-lobby.
+        $prepOpen = $debate->prep_rooms_opened_at
+            && $debate->prep_rooms_opened_at->lte($now)
+            && in_array($debate->status, ['teams-selected', 'live'])
+            && $debate->current_stage === 0;
+
         $resultOpen = $debate->status === 'completed'
             && $debate->result_revealed_at === null;
 
-        $mainJoinable   = $isApproved;
+        // Any authenticated user can join the main room (participant or viewer),
+        // both in lobby mode and during the debate.
+        $mainJoinable   = $user !== null;
         $propJoinable   = $isApproved && $p && in_array($p->side, ['proposition'])
             && in_array($p->role, ['debater']);
         $oppJoinable    = $isApproved && $p && in_array($p->side, ['opposition'])
@@ -125,8 +162,9 @@ class LiveStateResource extends JsonResource
 
     private function resolveRoleInMain(?DebateParticipant $p): ?string
     {
+        // Non-participants (and not-yet-approved users) join the main room as viewers.
         if (! $p || $p->status !== 'approved') {
-            return null;
+            return 'viewer';
         }
         if ($p->role === 'judge') {
             return $p->is_chair ? 'judge_chair' : 'judge_panel';

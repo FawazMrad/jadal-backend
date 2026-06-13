@@ -161,6 +161,12 @@ class LiveKitWebhookController extends Controller
      */
     private function electChair(Debate $debate, ?int $excludeUserId = null): void
     {
+        // Remember the outgoing chair so we only broadcast on an actual change.
+        $previousChairUserId = DebateParticipant::where('debate_id', $debate->id)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->value('user_id');
+
         // Reset all chair flags.
         DebateParticipant::where('debate_id', $debate->id)
             ->where('role', 'judge')
@@ -181,6 +187,16 @@ class LiveKitWebhookController extends Controller
 
         if ($newChair) {
             $newChair->update(['is_chair' => true]);
+
+            // Broadcast only when the chair actually changed.
+            if ((int) $newChair->user_id !== (int) $previousChairUserId) {
+                try {
+                    $this->liveKit->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        ['event' => 'chair_elected', 'chair_user_id' => (int) $newChair->user_id]
+                    );
+                } catch (\Throwable) {}
+            }
         }
     }
 

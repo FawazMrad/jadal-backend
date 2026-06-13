@@ -21,21 +21,32 @@ class Debate extends Model
         'description',
         'status',
         'livekit_room_name',
+        'prop_room_name',
+        'opp_room_name',
+        'result_room_name',
         'recording_url',
         'transcript',
         'scheduled_at',
         'tag',
         'started_at',
         'ended_at',
+        'current_stage',
+        'motion_revealed_at',
+        'prep_rooms_opened_at',
+        'result_revealed_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'status'       => 'string',
-            'scheduled_at' => 'datetime',
-            'started_at'   => 'datetime',
-            'ended_at'     => 'datetime',
+            'status'              => 'string',
+            'current_stage'       => 'integer',
+            'scheduled_at'        => 'datetime',
+            'started_at'          => 'datetime',
+            'ended_at'            => 'datetime',
+            'motion_revealed_at'  => 'datetime',
+            'prep_rooms_opened_at' => 'datetime',
+            'result_revealed_at'  => 'datetime',
         ];
     }
 
@@ -63,7 +74,10 @@ class Debate extends Model
     {
         return $this->belongsToMany(User::class, 'debate_participants')
             ->using(DebateParticipant::class)
-            ->withPivot(['team_id', 'role', 'side', 'status', 'is_chair', 'is_attended', 'speaking_phase_order'])
+            ->withPivot([
+                'team_id', 'role', 'side', 'status', 'is_chair',
+                'is_attended', 'speaking_phase_order', 'judge_order',
+            ])
             ->withTimestamps();
     }
 
@@ -79,7 +93,7 @@ class Debate extends Model
 
     public function feedbacks(): HasMany
     {
-        return $this->hasMany(Feedback::class);
+        return $this->hasMany(Feedbacks::class);
     }
 
     public function evaluations(): HasMany
@@ -90,5 +104,27 @@ class Debate extends Model
     public function complaints(): HasMany
     {
         return $this->hasMany(Complaint::class);
+    }
+
+    public function propRoomParticipants(): HasMany
+    {
+        return $this->hasMany(DebateParticipant::class)->where('side', 'proposition');
+    }
+
+    public function oppRoomParticipants(): HasMany
+    {
+        return $this->hasMany(DebateParticipant::class)->where('side', 'opposition');
+    }
+
+    public function judges(): HasMany
+    {
+        return $this->hasMany(DebateParticipant::class)->where('role', 'judge');
+    }
+
+    public function chairJudge(): HasOne
+    {
+        return $this->hasOne(DebateParticipant::class)
+            ->where('role', 'judge')
+            ->where('is_chair', true);
     }
 }

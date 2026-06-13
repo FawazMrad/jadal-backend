@@ -13,8 +13,12 @@ class CheckUserStatus
         $user = $request->user();
 
         if ($user && $user->status !== 'active') {
-            // Revoke the current token so suspended/banned users cannot continue using the API
-            $user->currentAccessToken()?->delete();
+            // Revoke the current token so suspended/banned users cannot continue using the API.
+            // TransientToken (used in tests) has no delete() — guard with method_exists.
+            $token = $user->currentAccessToken();
+            if ($token && method_exists($token, 'delete')) {
+                $token->delete();
+            }
 
             return response()->json([
                 'success' => false,

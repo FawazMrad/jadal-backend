@@ -9,7 +9,9 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateController;
+use App\Http\Controllers\Api\LiveDebateController;
 use App\Http\Controllers\Api\LiveKitController;
+use App\Http\Controllers\Api\LiveKitWebhookController;
 use App\Http\Controllers\Api\DebateFormatController;
 use App\Http\Controllers\Api\EvaluationController;
 use App\Http\Controllers\Api\FeedbackController;
@@ -33,6 +35,10 @@ use Illuminate\Support\Facades\Route;
 |   role          → RoleMiddleware   (usage: role:admin  or  role:trainer,admin)
 |
 */
+
+// ── LiveKit webhook (public — signature-verified, no Sanctum) ─────────────────
+Route::post('/livekit/webhook', [LiveKitWebhookController::class, 'handle'])
+    ->name('livekit.webhook');
 
 // ── Auth (public) ─────────────────────────────────────────────────────────────
 Route::prefix('auth')->name('auth.')->group(function (): void {
@@ -109,11 +115,18 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
 
     // ── Debates — user-facing ─────────────────────────────────────────────────
     Route::prefix('debates')->name('debates.')->group(function (): void {
-        Route::get('/',                       [DebateController::class, 'index'])        ->name('index');
-        Route::get('/{debate}',               [DebateController::class, 'show'])         ->name('show');
-        Route::post('/{debate}/register',     [DebateController::class, 'register'])     ->name('register');
-        Route::post('/{debate}/result',       [DebateController::class, 'submitResult']) ->name('result');
-        Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])    ->name('token');
+        Route::get('/',                       [DebateController::class, 'index'])              ->name('index');
+        Route::get('/{debate}',               [DebateController::class, 'show'])               ->name('show');
+        Route::post('/{debate}/register',     [DebateController::class, 'register'])           ->name('register');
+        Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])          ->name('token');
+
+        // Live session endpoints
+        Route::get('/{debate}/live-state',              [LiveDebateController::class, 'state'])          ->name('live-state');
+        Route::post('/{debate}/team-speakers',          [LiveDebateController::class, 'setTeamSpeakers'])->name('team-speakers');
+        Route::post('/{debate}/next-stage',             [LiveDebateController::class, 'nextStage'])      ->name('next-stage');
+        Route::post('/{debate}/stages/{stage}/poi',     [LiveDebateController::class, 'reportPoi'])      ->name('stages.poi');
+        Route::post('/{debate}/result',                 [LiveDebateController::class, 'submitResult'])   ->name('result');
+        Route::post('/{debate}/result/reveal',          [LiveDebateController::class, 'revealResult'])   ->name('result.reveal');
     });
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────
@@ -254,6 +267,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::patch('/{debate}/participants/{participant}/status',
                 [AdminDebateController::class, 'updateParticipantStatus'])
                 ->name('participants.status');
+
+            Route::post('/{debate}/judges/order',
+                [AdminDebateController::class, 'setJudgesOrder'])
+                ->name('judges.order');
         });
 
         // Complaint management

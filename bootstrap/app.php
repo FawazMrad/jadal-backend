@@ -55,6 +55,22 @@ return Application::configure(basePath: dirname(__DIR__))
          */
         $exceptions->render(function (\Throwable $e, Request $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                        'errors'  => $e->errors(),
+                    ], 422);
+                }
+
+                if ($e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $e->getMessage() ?: 'Forbidden.',
+                        'errors'  => [],
+                    ], 403);
+                }
+
                 $status = method_exists($e, 'getStatusCode')
                     ? $e->getStatusCode()
                     : 500;

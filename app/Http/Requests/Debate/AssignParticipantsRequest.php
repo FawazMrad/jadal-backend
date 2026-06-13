@@ -20,7 +20,8 @@ class AssignParticipantsRequest extends FormRequest
             'participants.*.role'    => ['required', Rule::in(['debater', 'trainer', 'judge', 'viewer'])],
             'participants.*.side'    => ['required', Rule::in(['proposition', 'opposition', 'judge', 'trainer', 'viewer'])],
             'participants.*.team_id' => ['sometimes', 'nullable', 'integer', 'exists:teams,id'],
-            'participants.*.is_chair'=> ['sometimes', 'boolean'],
+            'participants.*.is_chair'   => ['sometimes', 'boolean'],
+            'participants.*.judge_order' => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
     }
 

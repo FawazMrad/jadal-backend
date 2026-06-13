@@ -25,6 +25,7 @@ class TeamFactory extends Factory
             'leader_id'  => User::factory()->debater(),
             'created_by' => User::factory()->admin(),
             'status'     => fake()->randomElement(['active', 'active', 'active', 'inactive']),
+            'is_random'  => false,
         ];
     }
 }

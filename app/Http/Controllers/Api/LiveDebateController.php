@@ -1,0 +1,470 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Debate\ReportPoiRequest;
+use App\Http\Requests\Debate\SetTeamSpeakersRequest;
+use App\Http\Requests\Debate\SubmitResultRequest;
+use App\Http\Resources\DebateResultResource;
+use App\Http\Resources\LiveStateResource;
+use App\Models\Debate;
+use App\Models\DebateParticipant;
+use App\Models\DebatePhase;
+use App\Models\DebateResult;
+use App\Services\LiveKitService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+
+class LiveDebateController extends Controller
+{
+    public function __construct(private LiveKitService $liveKit) {}
+
+    // ── F1: GET /debates/{debate}/live-state ──────────────────────────────────
+
+    public function state(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $debate->load([
+            'format',
+            'motion',
+            'participants.user',
+            'phases',
+            'result.judge',
+        ]);
+
+        $myParticipant = $debate->participants
+            ->firstWhere('user_id', $user->id);
+
+        // Non-admin users who have never been assigned must at least exist.
+        if (! $myParticipant && $user->role !== 'admin') {
+            return $this->error('غير مصرح. | Not a participant of this debate.', [], 403);
+        }
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'Live state retrieved.'
+        );
+    }
+
+    // ── F3: POST /debates/{debate}/team-speakers ──────────────────────────────
+
+    public function setTeamSpeakers(SetTeamSpeakersRequest $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+        $side = $request->side;
+
+        if (! in_array($debate->status, ['teams-selected', 'live'])) {
+            return $this->error(
+                'يمكن تحديد المتحدثين فقط في مرحلة تحديد الفرق أو أثناء النقاش. | Speakers can only be set when teams-selected or live.',
+                [], 422
+            );
+        }
+
+        if ($debate->current_stage !== 0) {
+            return $this->error('يبدأ النقاش بالفعل. لا يمكن تغيير المتحدثين. | Debate already in progress.', [], 422);
+        }
+
+        // Auth: user must be the leader of the team on that side.
+        $sideParticipants = DebateParticipant::where('debate_id', $debate->id)
+            ->where('side', $side)
+            ->where('role', 'debater')
+            ->where('status', 'approved')
+            ->get();
+
+        $teamId = $sideParticipants->first()?->team_id;
+
+        if ($teamId) {
+            $team = \App\Models\Team::find($teamId);
+            if (! $team || (int) $team->leader_id !== (int) $user->id) {
+                return $this->error('فقط قائد الفريق يمكنه تحديد المتحدثين. | Only the team leader can set speakers.', [], 403);
+            }
+        } else {
+            // Random team — any approved debater on that side can act as leader.
+            $isMember = $sideParticipants->contains('user_id', $user->id);
+            if (! $isMember) {
+                return $this->error('غير مصرح. | Not authorized to set speakers for this side.', [], 403);
+            }
+        }
+
+        $speakerIds = $request->speaker_user_ids;
+
+        // Verify all supplied IDs are approved debaters on this side.
+        $approvedIds = $sideParticipants->pluck('user_id')->map(fn ($id) => (int) $id)->toArray();
+        foreach ($speakerIds as $uid) {
+            if (! in_array((int) $uid, $approvedIds)) {
+                return $this->error(
+                    "المستخدم {$uid} ليس متحدثاً معتمداً على جانب {$side}. | User {$uid} is not an approved debater on {$side}.",
+                    [], 422
+                );
+            }
+        }
+
+        DB::transaction(function () use ($sideParticipants, $speakerIds, $side) {
+            // Reset all speaking orders for this side.
+            DebateParticipant::whereIn('id', $sideParticipants->pluck('id'))
+                ->update(['speaking_phase_order' => null]);
+
+            // Assign new order (1-based array position).
+            foreach ($speakerIds as $order => $userId) {
+                DebateParticipant::where('debate_id', $sideParticipants->first()->debate_id)
+                    ->where('user_id', $userId)
+                    ->where('side', $side)
+                    ->update(['speaking_phase_order' => $order + 1]);
+            }
+        });
+
+        // TODO: reply-speaker override is out of scope — speaker #1 is the default reply speaker.
+
+        $debate->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', request()->user()->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم تحديد المتحدثين. | Speakers set.'
+        );
+    }
+
+    // ── F4: POST /debates/{debate}/next-stage ─────────────────────────────────
+
+    public function nextStage(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        // Must be the chair judge.
+        $chair = DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $user->id)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->where('status', 'approved')
+            ->first();
+
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه تقديم المراحل. | Only the chair judge can advance stages.', [], 403);
+        }
+
+        if ($debate->status !== 'live') {
+            return $this->error('النقاش ليس في حالة live. | Debate is not live.', [], 422);
+        }
+
+        $result = DB::transaction(function () use ($debate, $user) {
+            $totalStages = $debate->phases()->count();
+
+            // Close the current active stage.
+            if ($debate->current_stage > 0) {
+                $currentPhase = DebatePhase::where('debate_id', $debate->id)
+                    ->where('order_index', $debate->current_stage)
+                    ->first();
+
+                if ($currentPhase) {
+                    $currentPhase->update(['status' => 'completed', 'ended_at' => now()]);
+
+                    if ($currentPhase->egress_id) {
+                        try {
+                            app(LiveKitService::class)->stopEgress($currentPhase->egress_id);
+                        } catch (\Throwable) {
+                            // Non-fatal — egress may have already ended.
+                        }
+                    }
+                }
+            }
+
+            $nextStage = $debate->current_stage + 1;
+
+            // Past the last stage → debate completed.
+            if ($nextStage > $totalStages) {
+                $debate->update([
+                    'status'        => 'completed',
+                    'ended_at'      => now(),
+                    'current_stage' => $nextStage,
+                ]);
+
+                // Open the result room.
+                app(LiveKitService::class)->createRoomIfMissing($debate->result_room_name);
+
+                // Notify main room.
+                try {
+                    app(LiveKitService::class)->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        ['event' => 'debate_completed']
+                    );
+                } catch (\Throwable) {}
+
+                return $debate;
+            }
+
+            // Advance to the next stage.
+            $nextPhase = DebatePhase::where('debate_id', $debate->id)
+                ->where('order_index', $nextStage)
+                ->first();
+
+            if (! $nextPhase) {
+                throw new \RuntimeException("Phase {$nextStage} not found for debate {$debate->id}.");
+            }
+
+            // Resolve the expected speaker for this stage.
+            $speakerParticipant = $this->resolveStageSpeaker($debate, $nextPhase);
+
+            $egressId = null;
+            if ($speakerParticipant) {
+                try {
+                    $egressId = app(LiveKitService::class)->startTrackEgressForParticipant(
+                        $debate->livekit_room_name,
+                        (string) $speakerParticipant->user_id,
+                        $debate->id,
+                        $nextStage
+                    );
+                } catch (\Throwable) {
+                    // Non-fatal — egress is best-effort.
+                }
+            }
+
+            $nextPhase->update([
+                'status'         => 'active',
+                'started_at'     => now(),
+                'participant_id' => $speakerParticipant?->id,
+                'egress_id'      => $egressId,
+            ]);
+
+            $debate->update(['current_stage' => $nextStage]);
+
+            // Broadcast stage change.
+            try {
+                app(LiveKitService::class)->sendDataToRoom(
+                    $debate->livekit_room_name,
+                    [
+                        'event'            => 'stage_changed',
+                        'current_stage'    => $nextStage,
+                        'speaker_user_id'  => $speakerParticipant?->user_id,
+                        'duration_seconds' => $nextPhase->duration_seconds,
+                        'server_started_at' => now()->toIso8601String(),
+                    ]
+                );
+            } catch (\Throwable) {}
+
+            return $debate->fresh();
+        });
+
+        $result->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $result->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($result, $myParticipant),
+            'تم تقديم المرحلة. | Stage advanced.'
+        );
+    }
+
+    // ── F5: POST /debates/{debate}/stages/{stage}/poi ─────────────────────────
+
+    public function reportPoi(ReportPoiRequest $request, Debate $debate, DebatePhase $stage): JsonResponse
+    {
+        $user = $request->user();
+
+        // Participant must be approved.
+        $participant = DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->first();
+
+        if (! $participant) {
+            return $this->error('غير مصرح. | Not an approved participant.', [], 403);
+        }
+
+        // Stage must be the currently active one.
+        if ($stage->debate_id !== $debate->id || $stage->order_index !== $debate->current_stage) {
+            return $this->error('المرحلة غير نشطة حالياً. | This stage is not the active stage.', [], 422);
+        }
+
+        if ($stage->status !== 'active') {
+            return $this->error('المرحلة غير نشطة. | Stage is not active.', [], 422);
+        }
+
+        $action         = $request->action;
+        $speakerParticipantId = $stage->participant_id;
+        $speakerParticipant   = $speakerParticipantId
+            ? DebateParticipant::find($speakerParticipantId)
+            : null;
+
+        if ($action === 'raise') {
+            // Anyone on the opposing side from the speaker.
+            if ($speakerParticipant) {
+                if ($participant->side === $speakerParticipant->side) {
+                    return $this->error('لا يمكن رفع نقطة إجراء من نفس الجانب. | Cannot raise POI from the same side as speaker.', [], 422);
+                }
+            }
+            $stage->increment('poi_raised_count');
+        } else {
+            // 'answer' — only the current speaker.
+            if (! $speakerParticipant || (int) $speakerParticipant->user_id !== (int) $user->id) {
+                return $this->error('فقط المتحدث الحالي يمكنه الإجابة. | Only the current speaker can answer.', [], 403);
+            }
+
+            if ($stage->poi_answered_count >= $stage->poi_raised_count) {
+                return $this->error('لا توجد نقاط مرفوعة للإجابة عليها. | No raised POI to answer.', [], 422);
+            }
+            $stage->increment('poi_answered_count');
+        }
+
+        return response()->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    // ── F6: POST /debates/{debate}/result  (overrides DebateController) ───────
+
+    public function submitResult(SubmitResultRequest $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $chair = DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $user->id)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->where('status', 'approved')
+            ->first();
+
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه تقديم النتيجة. | Only the chair judge can submit results.', [], 403);
+        }
+
+        if ($debate->status !== 'completed') {
+            return $this->error('يجب أن ينتهي النقاش أولاً (all stages must complete via /next-stage). | Debate is not completed.', [], 422);
+        }
+
+        if ($debate->result()->exists()) {
+            return $this->error('تم تقديم النتيجة بالفعل. | Result already submitted.', [], 409);
+        }
+
+        // Build scores payload from stage_scores.
+        $phases     = $debate->phases()->orderBy('order_index')->get()->keyBy('order_index');
+        $stageData  = [];
+
+        foreach ($request->stage_scores as $entry) {
+            $phase = $phases->get($entry['stage_order']);
+            if (! $phase) {
+                continue;
+            }
+
+            $participantId = $phase->participant_id;
+            $userId        = $participantId
+                ? DebateParticipant::find($participantId)?->user_id
+                : null;
+
+            $stageData[] = [
+                'stage_order'    => $entry['stage_order'],
+                'participant_id' => $participantId,
+                'user_id'        => $userId,
+                'score'          => $entry['score'],
+            ];
+        }
+
+        $result = DB::transaction(function () use ($request, $debate, $user, $stageData) {
+            return DebateResult::create([
+                'debate_id'     => $debate->id,
+                'judge_id'      => $user->id,
+                'winning_side'  => $request->winning_side,
+                'scores'        => [
+                    'stages' => $stageData,
+                    'notes'  => $request->summary_notes,
+                ],
+                'summary_notes' => $request->summary_notes,
+                'submitted_at'  => now(),
+            ]);
+        });
+
+        return $this->success(
+            new DebateResultResource($result->load('judge')),
+            'تم تقديم النتيجة. | Result submitted.',
+            201
+        );
+    }
+
+    // ── F7: POST /debates/{debate}/result/reveal ──────────────────────────────
+
+    public function revealResult(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $chair = DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $user->id)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->where('status', 'approved')
+            ->first();
+
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه الكشف عن النتيجة. | Only the chair judge can reveal the result.', [], 403);
+        }
+
+        if ($debate->status !== 'completed') {
+            return $this->error('النقاش لم ينته بعد. | Debate is not completed.', [], 422);
+        }
+
+        if (! $debate->result()->exists()) {
+            return $this->error('يجب تقديم النتيجة أولاً. | Result must be submitted before revealing.', [], 422);
+        }
+
+        if ($debate->result_revealed_at !== null) {
+            return $this->error('النتيجة مكشوفة بالفعل. | Result is already revealed.', [], 409);
+        }
+
+        $debate->update(['result_revealed_at' => now()]);
+
+        // Close the result room.
+        if ($debate->result_room_name) {
+            try {
+                $this->liveKit->deleteRoomIfExists($debate->result_room_name);
+            } catch (\Throwable) {}
+        }
+
+        // Broadcast to main room.
+        try {
+            $this->liveKit->sendDataToRoom(
+                $debate->livekit_room_name,
+                ['event' => 'result_revealed']
+            );
+        } catch (\Throwable) {}
+
+        $debate->load(['format', 'motion', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم الكشف عن النتيجة. | Result revealed.'
+        );
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Derive which approved participant should be the speaker for a given phase.
+     *
+     * Order alternates: stages 1,3,5 = proposition; stages 2,4,6 = opposition.
+     * Reply stages (if any): prop reply = prop speaker 1, opp reply = opp speaker 1.
+     *
+     * speaking_phase_order 1 = first speaker, 2 = second, 3 = third.
+     */
+    private function resolveStageSpeaker(Debate $debate, DebatePhase $phase): ?DebateParticipant
+    {
+        $orderIndex = $phase->order_index;
+        $isReply    = (bool) $phase->is_reply;
+
+        // Determine side and speaker slot from order_index.
+        if ($isReply) {
+            $side        = str_contains(strtolower($phase->name), 'opposition') ? 'opposition' : 'proposition';
+            $speakerSlot = 1; // Reply speaker is always speaker #1 by default.
+        } else {
+            // Odd order_index → proposition; even → opposition.
+            $side        = ($orderIndex % 2 === 1) ? 'proposition' : 'opposition';
+            $speakerSlot = (int) ceil($orderIndex / 2);
+        }
+
+        return DebateParticipant::where('debate_id', $debate->id)
+            ->where('side', $side)
+            ->where('role', 'debater')
+            ->where('status', 'approved')
+            ->where('speaking_phase_order', $speakerSlot)
+            ->first();
+    }
+}

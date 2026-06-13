@@ -12,11 +12,12 @@ use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
 use App\Models\Debate;
 use App\Models\DebateParticipant;
-use App\Models\Feedbacks;
 use App\Models\TeamMember;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminDebateController extends Controller
 {
@@ -46,12 +47,8 @@ class AdminDebateController extends Controller
 
     public function show(Debate $debate): JsonResponse
     {
-        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'phases', 'result.judge']);
-
-        $feedbacks = Feedbacks::where('debate_id', $debate->id)
-            ->with(['fromUser', 'toUser'])
-            ->get();
-        $debate->setRelation('feedbacks', $feedbacks);
+        // feedbacks() relationship now correctly points to Feedbacks::class.
+        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'phases', 'result.judge', 'feedbacks.fromUser', 'feedbacks.toUser']);
 
         return $this->success(new DebateDetailResource($debate), 'تم جلب النقاش. | Debate retrieved.');
     }
@@ -75,6 +72,7 @@ class AdminDebateController extends Controller
                 'is_chair'             => $p['is_chair'] ?? false,
                 'is_attended'          => false,
                 'speaking_phase_order' => null,
+                'judge_order'          => isset($p['judge_order']) ? (int) $p['judge_order'] : null,
             ];
 
             DebateParticipant::updateOrCreate(
@@ -130,11 +128,70 @@ class AdminDebateController extends Controller
         );
     }
 
+    // ── F8: POST /admin/debates/{debate}/judges/order ─────────────────────────
+
+    public function setJudgesOrder(Request $request, Debate $debate): JsonResponse
+    {
+        $request->validate([
+            'judges'                   => ['required', 'array', 'min:1'],
+            'judges.*.participant_id'  => ['required', 'integer'],
+            'judges.*.judge_order'     => ['required', 'integer', 'min:1'],
+        ]);
+
+        // Verify all participant_ids are approved judges on this debate.
+        $approvedJudgeIds = DebateParticipant::where('debate_id', $debate->id)
+            ->where('role', 'judge')
+            ->where('status', 'approved')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->toArray();
+
+        foreach ($request->judges as $entry) {
+            if (! in_array((int) $entry['participant_id'], $approvedJudgeIds)) {
+                return $this->error(
+                    "المشارك {$entry['participant_id']} ليس قاضياً معتمداً في هذا النقاش. | Participant {$entry['participant_id']} is not an approved judge.",
+                    [], 422
+                );
+            }
+        }
+
+        DB::transaction(function () use ($request, $debate) {
+            // Reset judge_order for all judges first.
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('role', 'judge')
+                ->update(['judge_order' => null, 'is_chair' => false]);
+
+            foreach ($request->judges as $entry) {
+                DebateParticipant::where('id', $entry['participant_id'])
+                    ->update(['judge_order' => $entry['judge_order']]);
+            }
+
+            // Auto-elect chair: judge with lowest judge_order.
+            $chair = DebateParticipant::where('debate_id', $debate->id)
+                ->where('role', 'judge')
+                ->where('status', 'approved')
+                ->whereNotNull('judge_order')
+                ->orderBy('judge_order')
+                ->first();
+
+            if ($chair) {
+                $chair->update(['is_chair' => true]);
+            }
+        });
+
+        $debate->load('participants.user');
+
+        return $this->success(
+            DebateParticipantResource::collection($debate->participants->where('role', 'judge')),
+            'تم تعيين ترتيب القضاة. | Judge order set.'
+        );
+    }
+
     public function start(Debate $debate): JsonResponse
     {
         if ($debate->status !== 'scheduled') {
             return $this->error(
-                'يمكن بدء النقاشات المعلقة فقط. | Only pending debates can be started.',
+                'يمكن بدء النقاشات المعلقة فقط. | Only scheduled debates can be started.',
                 [],
                 422
             );

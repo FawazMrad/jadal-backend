@@ -16,7 +16,7 @@ class DebateFactory extends Factory
 {
     public function definition(): array
     {
-        $scheduledAt = fake()->dateTimeBetween('-3 months', '+1 month');
+        $scheduledAt = fake()->dateTimeBetween('-3 months', 'now');
         $status      = fake()->randomElement(['scheduled', 'announced', 'teams-selected', 'live', 'completed', 'cancelled']);
 
         $startedAt = null;
@@ -35,14 +35,19 @@ class DebateFactory extends Factory
             'motion_id'        => Motion::factory(),
             'created_by'       => User::factory()->admin(),
             'title'            => fake()->sentence(6),
+            'tag'              => fake()->word(),
             'description'      => fake()->optional()->paragraph(),
             'status'           => $status,
-            'livekit_room_name' => 'room-' . Str::uuid(),
+            'livekit_room_name' => 'debate-' . Str::uuid() . '-main',
+            'prop_room_name'   => null,
+            'opp_room_name'    => null,
+            'result_room_name' => null,
             'recording_url'    => $status === 'completed' ? fake()->optional(0.7)->url() : null,
             'transcript'       => $status === 'completed' ? fake()->optional(0.5)->paragraphs(3, true) : null,
             'scheduled_at'     => $scheduledAt,
             'started_at'       => $startedAt,
             'ended_at'         => $endedAt,
+            'current_stage'    => 0,
         ];
     }
 

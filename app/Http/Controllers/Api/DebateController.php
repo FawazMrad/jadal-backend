@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Debate\ListDebatesRequest;
 use App\Http\Requests\Debate\RegisterDebateRequest;
 use App\Http\Requests\Debate\SubmitResultRequest;
 use App\Http\Resources\DebateDetailResource;
@@ -20,17 +21,53 @@ use Illuminate\Support\Facades\DB;
 
 class DebateController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    /**
+     * Public browse endpoint: any authenticated user can list debates across all
+     * statuses. Defaults to upcoming/live when no status filter is supplied.
+     */
+    public function index(ListDebatesRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $statuses = $request->input('statuses') ?? [
+            'scheduled', 'announced', 'teams-selected', 'live',
+        ];
 
-        $debates = Debate::with(['format', 'motion'])
-            ->whereHas('participants', fn ($q) => $q->where('user_id', $user->id))
-            ->when($request->status, fn ($q) => $q->where('status', $request->status))
-            ->latest()
-            ->paginate(20);
+        $userId = $request->user()->id;
 
-        return $this->paginated(DebateResource::collection($debates), $debates, 'تم جلب نقاشاتك. | Your debates retrieved.');
+        $query = Debate::query()
+            ->whereIn('status', $statuses)
+            ->with(['format', 'motion.frameworks'])
+            // Constrained eager-load so DebateResource can resolve
+            // my_participation_status without an N+1 per row.
+            ->with(['participants' => fn ($q) => $q->where('user_id', $userId)]);
+
+        if ($request->filled('format_id')) {
+            $query->where('format_id', $request->integer('format_id'));
+        }
+        if ($request->filled('motion_id')) {
+            $query->where('motion_id', $request->integer('motion_id'));
+        }
+        if ($request->filled('from_date')) {
+            $query->where('scheduled_at', '>=', $request->date('from_date'));
+        }
+        if ($request->filled('to_date')) {
+            $query->where('scheduled_at', '<=', $request->date('to_date'));
+        }
+
+        $sort = $request->input('sort', 'scheduled_asc');
+        match ($sort) {
+            'scheduled_desc' => $query->orderBy('scheduled_at', 'desc'),
+            'created_desc'   => $query->orderBy('created_at', 'desc'),
+            default          => $query->orderBy('scheduled_at', 'asc'),
+        };
+
+        $perPage = (int) $request->input('per_page', 15);
+        $debates = $query->paginate($perPage);
+
+        return $this->paginated(
+            DebateResource::collection($debates),
+            $debates,
+            'Debates retrieved successfully.'
+        );
     }
 
     public function show(Request $request, Debate $debate): JsonResponse

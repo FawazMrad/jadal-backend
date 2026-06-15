@@ -39,6 +39,7 @@ return [
         'url'    => env('LIVEKIT_URL'),
         'key'    => env('LIVEKIT_API_KEY'),
         'secret' => env('LIVEKIT_API_SECRET'),
+        'egress_output_dir' => env('LIVEKIT_EGRESS_OUTPUT_DIR', '/var/recordings'),
     ],
 
 ];

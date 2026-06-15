@@ -36,7 +36,8 @@ return [
     ],
 
     'livekit' => [
-        'url'    => env('LIVEKIT_URL'),
+        'url'    => env('LIVEKIT_URL'),                              // wss:// — returned to clients
+        'host'   => env('LIVEKIT_HOST', 'http://localhost:7880'),    // http(s):// — used by backend
         'key'    => env('LIVEKIT_API_KEY'),
         'secret' => env('LIVEKIT_API_SECRET'),
         'egress_output_dir' => env('LIVEKIT_EGRESS_OUTPUT_DIR', '/var/recordings'),

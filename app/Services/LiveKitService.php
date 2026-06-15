@@ -9,15 +9,25 @@ use Agence104\LiveKit\RoomServiceClient;
 use Agence104\LiveKit\VideoGrant;
 use App\Models\Debate;
 
+/**
+ * Two URLs are used:
+ * - config('services.livekit.url')   → wss:// → returned to clients in token responses
+ * - config('services.livekit.host')  → http(s):// → used by backend for Twirp API calls
+ *
+ * They MUST NOT be mixed. cURL cannot speak wss://, so any backend HTTP
+ * call to LiveKit must use the .host URL.
+ */
 class LiveKitService
 {
     private string $apiKey;
     private string $apiSecret;
-    private string $url;
+    private string $url;   // wss:// — client connection URL (not used for server API calls)
+    private string $host;  // http(s):// — server-to-server Twirp/HTTP API base URL
 
     public function __construct()
     {
         $this->url       = config('services.livekit.url');
+        $this->host      = config('services.livekit.host');
         $this->apiKey    = config('services.livekit.key');
         $this->apiSecret = config('services.livekit.secret');
     }
@@ -96,7 +106,7 @@ class LiveKitService
 
     public function createRoom(string $roomName, int $emptyTimeoutSeconds = 600): void
     {
-        $client  = new RoomServiceClient($this->url, $this->apiKey, $this->apiSecret);
+        $client  = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
         $options = (new RoomCreateOptions())
             ->setName($roomName)
             ->setEmptyTimeout($emptyTimeoutSeconds);
@@ -117,7 +127,7 @@ class LiveKitService
 
     public function deleteRoom(string $roomName): void
     {
-        $client = new RoomServiceClient($this->url, $this->apiKey, $this->apiSecret);
+        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
         $client->deleteRoom($roomName);
     }
 
@@ -161,7 +171,7 @@ class LiveKitService
 
     public function muteParticipant(string $roomName, string $identity, string $trackSid): void
     {
-        $client = new RoomServiceClient($this->url, $this->apiKey, $this->apiSecret);
+        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
         $client->mutePublishedTrack($roomName, $identity, $trackSid, true);
     }
 
@@ -174,7 +184,7 @@ class LiveKitService
      */
     public function sendDataToRoom(string $roomName, array $payload, ?array $destinationIdentities = null): void
     {
-        $client = new RoomServiceClient($this->url, $this->apiKey, $this->apiSecret);
+        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
 
         if (method_exists($client, 'sendData')) {
             // Positional call — SDK signature varies by version.
@@ -239,7 +249,7 @@ class LiveKitService
     {
         $jwt = $this->generateServerJwt();
 
-        $ch = curl_init("{$this->url}/twirp/livekit.{$service}/{$method}");
+        $ch = curl_init("{$this->host}/twirp/livekit.{$service}/{$method}");
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,

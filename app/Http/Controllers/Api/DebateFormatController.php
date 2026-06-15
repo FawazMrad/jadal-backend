@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\DebateFormat\StoreDebateFormatRequest;
 use App\Http\Requests\DebateFormat\UpdateDebateFormatRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Resources\DebateFormatResource;
 use App\Models\DebateFormat;
 use Illuminate\Http\JsonResponse;
@@ -12,9 +13,18 @@ use Illuminate\Support\Facades\DB;
 
 class DebateFormatController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
-        $formats = DebateFormat::orderBy('name')->get();
+        $formats = DebateFormat::query()
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where(function ($inner) use ($term) {
+                    $inner->where('name', 'LIKE', "%{$term}%")
+                          ->orWhere('description', 'LIKE', "%{$term}%");
+                });
+            })
+            ->orderBy('name')
+            ->get();
 
         return $this->success(
             DebateFormatResource::collection($formats),

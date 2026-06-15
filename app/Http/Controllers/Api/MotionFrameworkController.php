@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Motion\StoreFrameworkRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Resources\MotionFrameworkResource;
 use App\Models\MotionFramework;
 use Illuminate\Http\JsonResponse;
@@ -12,9 +13,14 @@ use Illuminate\Support\Facades\DB;
 
 class MotionFrameworkController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
-        $frameworks = MotionFramework::all();
+        $frameworks = MotionFramework::query()
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('name', 'LIKE', "%{$term}%");
+            })
+            ->get();
 
         return $this->success(
             MotionFrameworkResource::collection($frameworks),

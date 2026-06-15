@@ -8,6 +8,7 @@ use App\Http\Requests\Team\CreateTeamRequest;
 use App\Http\Requests\Team\ReorderPriorityRequest;
 use App\Http\Requests\Team\RespondLeaveRequest;
 use App\Http\Requests\Team\UpdateTeamRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Resources\TeamLeaveRequestResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
@@ -22,11 +23,15 @@ class TeamController extends Controller
 {
     // ── FR-29: List trainer's own teams ───────────────────────────────────────
 
-    public function index(Request $request): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
         $user = $request->user();
 
-        $query = Team::with(['leader', 'createdBy', 'teamMembers.user']);
+        $query = Team::with(['leader', 'createdBy', 'teamMembers.user'])
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('name', 'LIKE', "%{$term}%");
+            });
 
         // Admin can see all teams
         if ($user->role === 'admin') {
@@ -342,7 +347,7 @@ class TeamController extends Controller
 
     // ── Trainer: list leave requests for a team ───────────────────────────────
 
-    public function leaveRequests(Request $request, Team $team): JsonResponse
+    public function leaveRequests(SearchListRequest $request, Team $team): JsonResponse
     {
         if (! $this->ownsTeam($request, $team)) {
             return $this->error('غير مصرح. | Unauthorized.', [], 403);
@@ -350,6 +355,10 @@ class TeamController extends Controller
 
         $requests = TeamLeaveRequest::where('team_id', $team->id)
             ->with('user')
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('reason', 'LIKE', "%{$term}%");
+            })
             ->orderBy('created_at', 'desc')
             ->get();
 

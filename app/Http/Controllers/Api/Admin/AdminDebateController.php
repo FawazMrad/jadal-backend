@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Debate\AssignParticipantsRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Requests\Debate\StoreDebateRequest;
 use App\Http\Requests\Debate\UpdateDebateRequest;
 use App\Http\Requests\Debate\UpdateParticipantStatusRequest;
@@ -21,11 +22,19 @@ use Illuminate\Validation\Rule;
 
 class AdminDebateController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
         $debates = Debate::with(['format', 'motion'])
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
             ->when($request->tag, fn ($q) => $q->where('tag', $request->tag))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where(function ($inner) use ($term) {
+                    $inner->where('title', 'LIKE', "%{$term}%")
+                          ->orWhere('tag', 'LIKE', "%{$term}%")
+                          ->orWhereHas('motion', fn ($m) => $m->where('text', 'LIKE', "%{$term}%"));
+                });
+            })
             ->latest()
             ->paginate(20);
 

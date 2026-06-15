@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Evaluation\StoreEvaluationRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Resources\EvaluationResource;
 use App\Models\Evaluation;
 use Illuminate\Http\JsonResponse;
@@ -11,13 +12,17 @@ use Illuminate\Http\Request;
 
 class EvaluationController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
         $user = $request->user();
 
         $evaluations = Evaluation::with(['debater', 'debate'])
             ->where('trainer_id', $user->id)
             ->when($request->debater_id, fn ($q) => $q->where('debater_id', $request->debater_id))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('notes', 'LIKE', "%{$term}%");
+            })
             ->latest()
             ->paginate(20);
 

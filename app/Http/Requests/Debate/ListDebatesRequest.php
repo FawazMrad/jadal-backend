@@ -31,6 +31,10 @@ class ListDebatesRequest extends FormRequest
                 $this->merge(['statuses' => $statuses]);
             }
         }
+
+        if ($this->filled('search')) {
+            $this->merge(['search' => trim((string) $this->input('search'))]);
+        }
     }
 
     public function rules(): array
@@ -46,6 +50,7 @@ class ListDebatesRequest extends FormRequest
             'per_page'   => ['nullable', 'integer', 'min:1', 'max:50'],
             'page'       => ['nullable', 'integer', 'min:1'],
             'sort'       => ['nullable', Rule::in(['scheduled_asc', 'scheduled_desc', 'created_desc'])],
+            'search'     => ['nullable', 'string', 'min:2', 'max:100'],
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Feedback\StoreFeedbackRequest;
+use App\Http\Requests\SearchListRequest;
 use App\Http\Resources\FeedbackResource;
 use App\Models\Feedbacks;
 use Illuminate\Http\JsonResponse;
@@ -11,13 +12,17 @@ use Illuminate\Http\Request;
 
 class FeedbackController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(SearchListRequest $request): JsonResponse
     {
         $user = $request->user();
 
         $feedbacks = Feedbacks::with(['fromUser', 'toUser'])
             ->where(fn ($q) => $q->where('from_user_id', $user->id)->orWhere('to_user_id', $user->id))
             ->when($request->debate_id, fn ($q) => $q->where('debate_id', $request->debate_id))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('content', 'LIKE', "%{$term}%");
+            })
             ->latest()
             ->paginate(20);
 

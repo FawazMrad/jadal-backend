@@ -53,6 +53,15 @@ class DebateController extends Controller
             $query->where('scheduled_at', '<=', $request->date('to_date'));
         }
 
+        if ($request->filled('search')) {
+            $term = $request->input('search');
+            $query->where(function ($q) use ($term) {
+                $q->where('title', 'LIKE', "%{$term}%")
+                  ->orWhere('tag', 'LIKE', "%{$term}%")
+                  ->orWhereHas('motion', fn ($m) => $m->where('text', 'LIKE', "%{$term}%"));
+            });
+        }
+
         $sort = $request->input('sort', 'scheduled_asc');
         match ($sort) {
             'scheduled_desc' => $query->orderBy('scheduled_at', 'desc'),

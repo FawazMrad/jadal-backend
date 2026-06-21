@@ -102,7 +102,7 @@ class AdminDebateController extends Controller
 
                 if (! empty($p['team_id'])) {
                     $memberIds = TeamMember::where('team_id', $p['team_id'])
-                        ->where('status', 'active')
+                        ->where('status', 'current')
                         ->where('user_id', '!=', $p['user_id'])
                         ->pluck('user_id');
 

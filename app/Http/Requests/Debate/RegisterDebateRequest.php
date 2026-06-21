@@ -12,10 +12,22 @@ class RegisterDebateRequest extends FormRequest
         return true;
     }
 
+    /**
+     * Backward-compat: older clients sent `role` (debater|judge). Map it onto the
+     * new `as` field when `as` is absent.
+     */
+    protected function prepareForValidation(): void
+    {
+        if (! $this->filled('as') && $this->filled('role')) {
+            $this->merge(['as' => $this->input('role')]);
+        }
+    }
+
     public function rules(): array
     {
         return [
-            'role' => ['required', Rule::in(['debater', 'judge'])],
+            'as'      => ['required', Rule::in(['debater', 'judge', 'team'])],
+            'team_id' => ['required_if:as,team', 'nullable', 'integer', 'exists:teams,id'],
         ];
     }
 }

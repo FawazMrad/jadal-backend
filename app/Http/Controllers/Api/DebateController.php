@@ -14,7 +14,9 @@ use App\Models\Debate;
 use App\Models\DebateParticipant;
 use App\Models\DebateResult;
 use App\Models\Feedbacks;
+use App\Models\Team;
 use App\Models\TeamMember;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -112,10 +114,22 @@ class DebateController extends Controller
         return $this->success(new DebateDetailResource($debate), 'تم جلب النقاش. | Debate retrieved.');
     }
 
+    /**
+     * Self-registration for a debate. Three variants via the `as` field:
+     *  - debater : one pending row, side left null until an admin assigns it
+     *  - judge   : one pending row, side = judge
+     *  - team    : one pending row per active (status=current) team member +
+     *              one for the team's coach (teams.created_by), all tagged team_id
+     *
+     * All rows are keyed on (debate_id, user_id) so the admin assignment upsert
+     * can still cleanly match and upgrade them.
+     */
     public function register(RegisterDebateRequest $request, Debate $debate): JsonResponse
     {
         $user = $request->user();
 
+        // Registration is only open while the debate is still 'scheduled'
+        // (preserves the pre-existing gate).
         if ($debate->status !== 'scheduled') {
             return $this->error(
                 'التسجيل متاح فقط للنقاشات المجدولة. | Registration is only allowed for scheduled debates.',
@@ -124,22 +138,33 @@ class DebateController extends Controller
             );
         }
 
-        $existing = DebateParticipant::where('debate_id', $debate->id)
-            ->where('user_id', $user->id)
-            ->exists();
+        return $request->input('as') === 'team'
+            ? $this->registerTeam($debate, $user, (int) $request->input('team_id'))
+            : $this->registerSolo($debate, $user, $request->input('as'));
+    }
 
-        if ($existing) {
-            return $this->error('أنت مسجل بالفعل في هذا النقاش. | Already registered.', [], 409);
+    private function registerSolo(Debate $debate, User $user, string $as): JsonResponse
+    {
+        // The account role must match the requested variant.
+        if ($user->role !== $as) {
+            return $this->error(
+                "لا يمكنك التسجيل بهذه الصفة. | Your account role does not allow registering as {$as}.",
+                [],
+                403
+            );
         }
 
-        $role = $request->role;
-        $side = $role === 'judge' ? 'judge' : 'proposition';
+        if ($this->alreadyRegistered($debate, (int) $user->id)) {
+            return $this->error('أنت مسجل بالفعل في هذا النقاش. | Already registered.', [], 409);
+        }
 
         $participant = DebateParticipant::create([
             'debate_id'   => $debate->id,
             'user_id'     => $user->id,
-            'role'        => $role,
-            'side'        => $side,
+            'team_id'     => null,
+            'role'        => $as,
+            // Debaters: side is assigned later by the admin. Judges: always 'judge'.
+            'side'        => $as === 'judge' ? 'judge' : null,
             'status'      => 'pending',
             'is_chair'    => false,
             'is_attended' => false,
@@ -150,6 +175,97 @@ class DebateController extends Controller
             'تم التسجيل. | Registered successfully.',
             201
         );
+    }
+
+    private function registerTeam(Debate $debate, User $user, int $teamId): JsonResponse
+    {
+        $team = Team::find($teamId); // existence already validated by the FormRequest
+
+        if ($team->is_random) {
+            return $this->error(
+                'لا يمكن تسجيل فريق عشوائي. | Random/ad-hoc teams cannot register.',
+                [],
+                422
+            );
+        }
+
+        // Only the team leader or its coach (created_by) may register the team.
+        $isLeader = (int) $team->leader_id === (int) $user->id;
+        $isCoach  = (int) $team->created_by === (int) $user->id;
+        if (! $isLeader && ! $isCoach) {
+            return $this->error(
+                'فقط قائد الفريق أو مدربه يمكنه تسجيل الفريق. | Only the team leader or coach can register the team.',
+                [],
+                403
+            );
+        }
+
+        if ($this->alreadyRegistered($debate, (int) $user->id)) {
+            return $this->error('أنت مسجل بالفعل في هذا النقاش. | Already registered.', [], 409);
+        }
+
+        // Active members = team_members with status 'current' (the real enum value).
+        $memberIds = TeamMember::where('team_id', $team->id)
+            ->where('status', 'current')
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $trainerId = (int) $team->created_by;
+
+        $affectedUserIds = DB::transaction(function () use ($debate, $team, $memberIds, $trainerId) {
+            $affected = [];
+
+            // One pending debater row per active member.
+            foreach ($memberIds as $memberId) {
+                $affected[] = $memberId;
+                DebateParticipant::firstOrCreate(
+                    ['debate_id' => $debate->id, 'user_id' => $memberId],
+                    [
+                        'team_id'     => $team->id,
+                        'role'        => 'debater',
+                        'side'        => null,
+                        'status'      => 'pending',
+                        'is_chair'    => false,
+                        'is_attended' => false,
+                    ]
+                );
+            }
+
+            // One pending row for the team's coach/trainer.
+            $affected[] = $trainerId;
+            DebateParticipant::firstOrCreate(
+                ['debate_id' => $debate->id, 'user_id' => $trainerId],
+                [
+                    'team_id'     => $team->id,
+                    'role'        => 'trainer',
+                    'side'        => 'trainer',
+                    'status'      => 'pending',
+                    'is_chair'    => false,
+                    'is_attended' => false,
+                ]
+            );
+
+            return $affected;
+        });
+
+        $rows = DebateParticipant::where('debate_id', $debate->id)
+            ->whereIn('user_id', array_values(array_unique($affectedUserIds)))
+            ->with('user')
+            ->get();
+
+        return $this->success(
+            DebateParticipantResource::collection($rows),
+            'تم تسجيل الفريق. | Team registered.',
+            201
+        );
+    }
+
+    private function alreadyRegistered(Debate $debate, int $userId): bool
+    {
+        return DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $userId)
+            ->exists();
     }
 
     public function submitResult(SubmitResultRequest $request, Debate $debate): JsonResponse

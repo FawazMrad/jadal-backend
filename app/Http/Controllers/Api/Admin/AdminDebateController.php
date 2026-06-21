@@ -13,7 +13,7 @@ use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
 use App\Models\Debate;
 use App\Models\DebateParticipant;
-use App\Models\TeamMember;
+use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,13 +76,8 @@ class AdminDebateController extends Controller
             // Judges missing an explicit judge_order get the next monotonic value.
             $nextJudgeOrder = $this->nextJudgeOrder($request->participants, $debate);
 
-            // Users explicitly listed in this request own their role/side and must
-            // never be overwritten by another entry's team auto-pull.
-            $explicitUserIds = collect($request->participants)
-                ->pluck('user_id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
-
+            // Each entry is applied independently to its own (debate_id, user_id)
+            // row. No row is touched unless it is explicitly listed in the payload.
             foreach ($request->participants as $p) {
                 $judgeOrder = null;
                 if (($p['role'] ?? null) === 'judge') {
@@ -106,29 +101,6 @@ class AdminDebateController extends Controller
                     ['debate_id' => $debate->id, 'user_id' => $p['user_id']],
                     $attrs
                 );
-
-                if (! empty($p['team_id'])) {
-                    $memberIds = TeamMember::where('team_id', $p['team_id'])
-                        ->where('status', 'current')
-                        ->where('user_id', '!=', $p['user_id'])
-                        ->whereNotIn('user_id', $explicitUserIds)
-                        ->pluck('user_id');
-
-                    foreach ($memberIds as $memberId) {
-                        DebateParticipant::updateOrCreate(
-                            ['debate_id' => $debate->id, 'user_id' => $memberId],
-                            [
-                                'team_id'              => $p['team_id'],
-                                'role'                 => $p['role'],
-                                'side'                 => $p['side'],
-                                'status'               => 'approved',
-                                'is_chair'             => false,
-                                'is_attended'          => false,
-                                'speaking_phase_order' => null,
-                            ]
-                        );
-                    }
-                }
             }
 
             // Admin-driven status bump: once both sides have an approved debater and
@@ -148,6 +120,28 @@ class AdminDebateController extends Controller
         return $this->success(
             DebateParticipantResource::collection($debate->participants),
             'تم تعيين المشاركين. | Participants assigned.'
+        );
+    }
+
+    /**
+     * GET /admin/debates/{debate}/teams/{team}/pending-participants
+     *
+     * Returns the pending debate_participants rows that registration already
+     * created for this debate + team (correctly role-tagged debater/trainer).
+     * The admin UI uses this as a checklist, then submits only the chosen
+     * user_ids to assignParticipants — no auto-pull/guessing on the server.
+     */
+    public function pendingParticipants(Debate $debate, Team $team): JsonResponse
+    {
+        $participants = DebateParticipant::where('debate_id', $debate->id)
+            ->where('team_id', $team->id)
+            ->where('status', 'pending')
+            ->with('user')
+            ->get();
+
+        return $this->success(
+            DebateParticipantResource::collection($participants),
+            'تم جلب المشاركين المعلقين للفريق. | Pending team participants retrieved.'
         );
     }
 

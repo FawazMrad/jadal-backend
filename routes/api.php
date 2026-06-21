@@ -266,6 +266,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
                 [AdminDebateController::class, 'assignParticipants'])
                 ->name('participants.assign');
 
+            Route::get('/{debate}/teams/{team}/pending-participants',
+                [AdminDebateController::class, 'pendingParticipants'])
+                ->name('teams.pending-participants');
+
             Route::patch('/{debate}/participants/{participant}/status',
                 [AdminDebateController::class, 'updateParticipantStatus'])
                 ->name('participants.status');

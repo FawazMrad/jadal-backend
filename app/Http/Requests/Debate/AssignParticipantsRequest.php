@@ -19,6 +19,8 @@ class AssignParticipantsRequest extends FormRequest
             'participants.*.user_id' => ['required', 'integer', 'exists:users,id'],
             'participants.*.role'    => ['required', Rule::in(['debater', 'trainer', 'judge', 'viewer'])],
             'participants.*.side'    => ['required', Rule::in(['proposition', 'opposition', 'judge', 'trainer', 'viewer'])],
+            // team_id only tags which team a participant belongs to. It no longer
+            // triggers any auto-pull/expansion of other team members.
             'participants.*.team_id' => ['sometimes', 'nullable', 'integer', 'exists:teams,id'],
             'participants.*.is_chair'   => ['sometimes', 'boolean'],
             'participants.*.judge_order' => ['sometimes', 'nullable', 'integer', 'min:1', 'distinct'],

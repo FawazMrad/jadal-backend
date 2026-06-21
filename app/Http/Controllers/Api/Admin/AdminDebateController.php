@@ -76,6 +76,13 @@ class AdminDebateController extends Controller
             // Judges missing an explicit judge_order get the next monotonic value.
             $nextJudgeOrder = $this->nextJudgeOrder($request->participants, $debate);
 
+            // Users explicitly listed in this request own their role/side and must
+            // never be overwritten by another entry's team auto-pull.
+            $explicitUserIds = collect($request->participants)
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
             foreach ($request->participants as $p) {
                 $judgeOrder = null;
                 if (($p['role'] ?? null) === 'judge') {
@@ -104,6 +111,7 @@ class AdminDebateController extends Controller
                     $memberIds = TeamMember::where('team_id', $p['team_id'])
                         ->where('status', 'current')
                         ->where('user_id', '!=', $p['user_id'])
+                        ->whereNotIn('user_id', $explicitUserIds)
                         ->pluck('user_id');
 
                     foreach ($memberIds as $memberId) {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Debate\ListDebatesRequest;
 use App\Http\Requests\Debate\RegisterDebateRequest;
 use App\Http\Requests\Debate\SubmitResultRequest;
+use App\Http\Requests\Debate\TeamRosterRequest;
 use App\Http\Resources\DebateDetailResource;
 use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
@@ -266,6 +267,128 @@ class DebateController extends Controller
         return DebateParticipant::where('debate_id', $debate->id)
             ->where('user_id', $userId)
             ->exists();
+    }
+
+    /**
+     * POST /debates/{debate}/team-roster
+     *
+     * The team itself (leader or coach) finalizes who plays — this AUTO-APPROVES
+     * the chosen 3 and auto-rejects the rest of the team's pending debaters. No
+     * admin review step. Side is taken from the admin's prior side declaration
+     * (proposition_team_id / opposition_team_id), never chosen here.
+     *
+     * Replay (allowed while status = scheduled): the call is idempotent — the 3
+     * chosen become approved on the team's side, every OTHER debater of the team
+     * becomes rejected, and the trainer is approved. Re-running with a different
+     * trio cleanly replaces the previous selection (a previously-rejected debater
+     * picked in the new trio is re-approved).
+     */
+    public function teamRoster(TeamRosterRequest $request, Debate $debate): JsonResponse
+    {
+        $user       = $request->user();
+        $teamId     = (int) $request->team_id;
+        $speakerIds = array_map('intval', $request->speaker_user_ids);
+
+        if ($debate->status !== 'scheduled') {
+            return $this->error(
+                'يمكن تحديد القائمة فقط للنقاشات المجدولة. | Roster can only be set while the debate is scheduled.',
+                [], 422
+            );
+        }
+
+        // The team must be pre-declared on one of this debate's sides.
+        $side = match ($teamId) {
+            (int) $debate->proposition_team_id => 'proposition',
+            (int) $debate->opposition_team_id  => 'opposition',
+            default                            => null,
+        };
+        if ($side === null) {
+            return $this->error(
+                'الفريق غير مرتبط بأي جانب في هذا النقاش. | This team is not linked to a side of this debate yet.',
+                [], 422
+            );
+        }
+
+        // Caller must be the team's leader or coach (same check as team registration).
+        $team = Team::find($teamId);
+        if ((int) $team->leader_id !== (int) $user->id && (int) $team->created_by !== (int) $user->id) {
+            return $this->error(
+                'فقط قائد الفريق أو مدربه يمكنه تحديد القائمة. | Only the team leader or coach can set the roster.',
+                [], 403
+            );
+        }
+
+        // All 3 chosen must be debater participants of this team on this debate.
+        $teamDebaterIds = DebateParticipant::where('debate_id', $debate->id)
+            ->where('team_id', $teamId)
+            ->where('role', 'debater')
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        foreach ($speakerIds as $sid) {
+            if (! in_array($sid, $teamDebaterIds, true)) {
+                return $this->error(
+                    "المستخدم {$sid} ليس ضمن قائمة المتحدثين المعلقة لهذا الفريق. | User {$sid} is not in this team's debater pool.",
+                    [], 422
+                );
+            }
+        }
+
+        DB::transaction(function () use ($debate, $teamId, $speakerIds, $side) {
+            // Chosen debaters → approved on the team's declared side.
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('team_id', $teamId)
+                ->where('role', 'debater')
+                ->whereIn('user_id', $speakerIds)
+                ->update(['status' => 'approved', 'side' => $side]);
+
+            // Every other debater of the team → rejected (also handles replay).
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('team_id', $teamId)
+                ->where('role', 'debater')
+                ->whereNotIn('user_id', $speakerIds)
+                ->update(['status' => 'rejected']);
+
+            // The team's trainer/coach → approved, side stays 'trainer'.
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('team_id', $teamId)
+                ->where('role', 'trainer')
+                ->update(['status' => 'approved', 'side' => 'trainer']);
+        });
+
+        $this->bumpToAnnouncedIfReady($debate->fresh());
+
+        $rows = DebateParticipant::where('debate_id', $debate->id)
+            ->where('team_id', $teamId)
+            ->with('user')
+            ->get();
+
+        return $this->success(
+            DebateParticipantResource::collection($rows),
+            'تم تحديد قائمة الفريق. | Team roster finalized.'
+        );
+    }
+
+    /**
+     * Bump a scheduled debate to 'announced' once both sides have an approved
+     * debater and there is at least one approved judge. Mirrors the trigger in
+     * AdminDebateController::assignParticipants so team self-selection can also
+     * complete the lineup.
+     */
+    private function bumpToAnnouncedIfReady(Debate $debate): void
+    {
+        if ($debate->status !== 'scheduled') {
+            return;
+        }
+
+        $hasProp  = $debate->participants()->where('side', 'proposition')->where('role', 'debater')->where('status', 'approved')->exists();
+        $hasOpp   = $debate->participants()->where('side', 'opposition')->where('role', 'debater')->where('status', 'approved')->exists();
+        $hasJudge = $debate->participants()->where('role', 'judge')->where('status', 'approved')->exists();
+
+        if ($hasProp && $hasOpp && $hasJudge) {
+            $debate->update(['status' => 'announced']);
+        }
     }
 
     public function submitResult(SubmitResultRequest $request, Debate $debate): JsonResponse

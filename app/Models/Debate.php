@@ -16,6 +16,8 @@ class Debate extends Model
     protected $fillable = [
         'format_id',
         'motion_id',
+        'proposition_team_id',
+        'opposition_team_id',
         'created_by',
         'title',
         'description',
@@ -59,6 +61,16 @@ class Debate extends Model
     public function motion(): BelongsTo
     {
         return $this->belongsTo(Motion::class, 'motion_id');
+    }
+
+    public function propositionTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'proposition_team_id');
+    }
+
+    public function oppositionTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'opposition_team_id');
     }
 
     public function createdBy(): BelongsTo

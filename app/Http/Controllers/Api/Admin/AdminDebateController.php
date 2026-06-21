@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Debate\AssignParticipantsRequest;
+use App\Http\Requests\Debate\LinkDebateTeamsRequest;
 use App\Http\Requests\SearchListRequest;
 use App\Http\Requests\Debate\StoreDebateRequest;
 use App\Http\Requests\Debate\UpdateDebateRequest;
@@ -121,6 +122,47 @@ class AdminDebateController extends Controller
             DebateParticipantResource::collection($debate->participants),
             'تم تعيين المشاركين. | Participants assigned.'
         );
+    }
+
+    /**
+     * POST /admin/debates/{debate}/teams
+     *
+     * Admin pre-declares which team plays each side, before roster selection.
+     * Side is then known in advance so the team's self-roster endpoint can
+     * auto-assign it.
+     */
+    public function linkTeams(LinkDebateTeamsRequest $request, Debate $debate): JsonResponse
+    {
+        $propId = (int) $request->proposition_team_id;
+        $oppId  = (int) $request->opposition_team_id;
+
+        // Both teams must be active.
+        $teams = Team::whereIn('id', [$propId, $oppId])->get()->keyBy('id');
+        foreach ([$propId, $oppId] as $teamId) {
+            if (($teams[$teamId]->status ?? null) !== 'active') {
+                return $this->error('يجب أن يكون الفريق نشطاً. | Both teams must be active.', [], 422);
+            }
+        }
+
+        // Neither submitted team may already be linked to this debate.
+        $alreadyLinked = array_filter([
+            (int) $debate->proposition_team_id,
+            (int) $debate->opposition_team_id,
+        ]);
+        if (! empty(array_intersect([$propId, $oppId], $alreadyLinked))) {
+            return $this->error('الفريق مرتبط بالفعل بهذا النقاش. | A team is already linked to this debate.', [], 422);
+        }
+
+        $debate->update([
+            'proposition_team_id' => $propId,
+            'opposition_team_id'  => $oppId,
+        ]);
+
+        return $this->success([
+            'debate_id'           => $debate->id,
+            'proposition_team_id' => $propId,
+            'opposition_team_id'  => $oppId,
+        ], 'تم ربط الفرق بالنقاش. | Teams linked to debate sides.');
     }
 
     /**

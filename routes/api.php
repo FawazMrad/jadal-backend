@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateController;
+use App\Http\Controllers\Api\DebaterStatsController;
 use App\Http\Controllers\Api\LiveDebateController;
 use App\Http\Controllers\Api\LiveKitController;
 use App\Http\Controllers\Api\LiveKitWebhookController;
@@ -130,6 +131,15 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{debate}/result',                 [LiveDebateController::class, 'submitResult'])   ->name('result');
         Route::post('/{debate}/result/reveal',          [LiveDebateController::class, 'revealResult'])   ->name('result.reveal');
         Route::post('/{debate}/close-main',             [LiveDebateController::class, 'closeMain'])      ->name('close-main');
+    });
+
+    // ── Debater statistics (debater=own, coach=supervised, admin=any) ─────────
+    Route::prefix('debaters/{debater}/stats')->name('debaters.stats.')->group(function (): void {
+        Route::get('/win-rate',      [DebaterStatsController::class, 'winRate'])     ->name('win-rate');
+        Route::get('/avg-score',     [DebaterStatsController::class, 'avgScore'])    ->name('avg-score');
+        Route::get('/best-speaker',  [DebaterStatsController::class, 'bestSpeaker']) ->name('best-speaker');
+        Route::get('/score-ranking', [DebaterStatsController::class, 'scoreRanking'])->name('score-ranking');
+        Route::get('/improvement',   [DebaterStatsController::class, 'improvement']) ->name('improvement');
     });
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────

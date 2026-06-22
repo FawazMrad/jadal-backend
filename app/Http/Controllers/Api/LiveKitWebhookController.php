@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use Agence104\LiveKit\AccessToken;
 use App\Http\Controllers\Controller;
 use App\Models\Debate;
 use App\Models\DebateParticipant;
 use App\Models\DebatePhase;
 use App\Services\LiveKitService;
+use Firebase\JWT\BeforeValidException;
+use Firebase\JWT\ExpiredException;
+use Firebase\JWT\SignatureInvalidException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
@@ -210,57 +214,87 @@ class LiveKitWebhookController extends Controller
     }
 
     /**
-     * Verify the LiveKit webhook signature (Authorization: Bearer {jwt}).
+     * Verify a LiveKit webhook using the official SDK verification path.
      *
-     * LiveKit signs webhooks with a JWT using the API secret. We verify by
-     * checking the token can be decoded with the known secret, and that the
-     * sha256 hash of the body embedded in the token matches the actual body.
+     * LiveKit sends the signed JWT as the *raw* `Authorization` header value —
+     * there is NO "Bearer " scheme. Verification (identical to what
+     * Agence104\LiveKit\WebhookReceiver::receive() performs) is:
+     *   1. Decode the HS256 JWT with the API secret (firebase/php-jwt, via the
+     *      SDK's AccessToken::fromJwt) — this also enforces `iss == apiKey`.
+     *   2. Confirm the token's `sha256` claim equals base64(sha256(rawBody)).
      *
-     * // TODO: SDK feature — use Agence104\LiveKit\WebhookReceiver once the
-     * // PHP SDK exposes it. For now we do a lightweight JWT decode + body hash check.
+     * The previous DIY implementation rejected every real webhook because it
+     * required an "Authorization: Bearer …" prefix that LiveKit never sends —
+     * it bailed out before any crypto ran (hence no exceptions, no logs).
      */
     private function verifySignature(string $body, string $authHeader): bool
     {
-        if (! str_starts_with($authHeader, 'Bearer ')) {
-            return false;
-        }
+        // Tolerate (but never require) an accidental scheme prefix from proxies.
+        $jwt = trim(preg_replace('/^Bearer\s+/i', '', $authHeader));
 
-        $jwt    = substr($authHeader, 7);
+        $key    = config('services.livekit.key');
         $secret = config('services.livekit.secret');
 
-        if (empty($secret)) {
-            Log::warning('LiveKit webhook: LIVEKIT_API_SECRET not configured — skipping verification.');
+        if (empty($key) || empty($secret)) {
+            if (app()->environment('production')) {
+                Log::error('LiveKit webhook REJECTED: LIVEKIT_API_KEY/SECRET not configured in production.');
+                return false;
+            }
+            Log::warning('LiveKit webhook: API key/secret not configured — allowing in non-production only.');
             return true;
         }
 
-        try {
-            $parts = explode('.', $jwt);
-            if (count($parts) !== 3) {
-                return false;
-            }
-
-            $payloadJson = base64_decode(strtr($parts[1], '-_', '+/'));
-            $tokenPayload = json_decode($payloadJson, true);
-
-            if (empty($tokenPayload['sha256'])) {
-                return false;
-            }
-
-            $expectedHash = $tokenPayload['sha256'];
-            $actualHash   = base64_encode(hash('sha256', $body, true));
-
-            if (! hash_equals($expectedHash, $actualHash)) {
-                return false;
-            }
-
-            // Verify HMAC signature of the JWT itself.
-            $sigInput  = $parts[0] . '.' . $parts[1];
-            $expected  = rtrim(strtr(base64_encode(hash_hmac('sha256', $sigInput, $secret, true)), '+/', '-_'), '=');
-
-            return hash_equals($expected, $parts[2]);
-        } catch (\Throwable $e) {
-            Log::error('LiveKit webhook signature verification failed: ' . $e->getMessage());
+        if ($jwt === '') {
+            $this->logWebhookAuthFailure('missing_authorization_header', $authHeader);
             return false;
         }
+
+        try {
+            // SDK's official verify: HS256 decode + issuer check.
+            $grants = (new AccessToken($key, $secret))->fromJwt($jwt);
+        } catch (SignatureInvalidException $e) {
+            $this->logWebhookAuthFailure('signature_mismatch — wrong API secret or tampered token', $authHeader, $jwt);
+            return false;
+        } catch (ExpiredException | BeforeValidException $e) {
+            $this->logWebhookAuthFailure('token_expired_or_not_yet_valid: ' . $e->getMessage(), $authHeader, $jwt);
+            return false;
+        } catch (\Throwable $e) {
+            // Malformed token, bad issuer, unexpected claim shape, etc.
+            $this->logWebhookAuthFailure('malformed_or_invalid_jwt: ' . $e->getMessage(), $authHeader, $jwt);
+            return false;
+        }
+
+        // Body-integrity claim: sha256 == base64(sha256(rawBody)).
+        $expected = (string) $grants->getSha256();
+        $actual   = base64_encode(hash('sha256', $body, true));
+
+        if ($expected === '' || ! hash_equals($expected, $actual)) {
+            $this->logWebhookAuthFailure('body_hash_mismatch (sha256 claim != base64(sha256(body)))', $authHeader, $jwt);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Log a verification failure with everything needed to diagnose webhook auth
+     * issues without re-instrumenting: the reason, the raw Authorization header,
+     * and the decoded JWT header.
+     */
+    private function logWebhookAuthFailure(string $reason, string $authHeader, ?string $jwt = null): void
+    {
+        $jwtHeader = null;
+        if ($jwt) {
+            $seg = explode('.', $jwt);
+            if (isset($seg[0])) {
+                $jwtHeader = json_decode(base64_decode(strtr($seg[0], '-_', '+/')) ?: '', true);
+            }
+        }
+
+        Log::warning('LiveKit webhook signature verification failed', [
+            'reason'               => $reason,
+            'authorization_header' => $authHeader,
+            'jwt_header'           => $jwtHeader,
+        ]);
     }
 }

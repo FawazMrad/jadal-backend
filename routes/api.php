@@ -131,6 +131,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{debate}/result',                 [LiveDebateController::class, 'submitResult'])   ->name('result');
         Route::post('/{debate}/result/reveal',          [LiveDebateController::class, 'revealResult'])   ->name('result.reveal');
         Route::post('/{debate}/close-main',             [LiveDebateController::class, 'closeMain'])      ->name('close-main');
+        Route::post('/{debate}/close-room',             [LiveDebateController::class, 'closeRoom'])      ->name('close-room');
     });
 
     // ── Debater statistics (debater=own, coach=supervised, admin=any) ─────────

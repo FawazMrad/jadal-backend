@@ -601,6 +601,72 @@ class LiveDebateController extends Controller
         );
     }
 
+    // ── V2: POST /debates/{debate}/close-room ─────────────────────────────────
+
+    /**
+     * Terminal "close the room" action for the chair. Allowed from any
+     * non-terminal status (teams-selected, live, completed, …). It either:
+     *   - reveals an already-submitted-but-unrevealed result (a finished debate
+     *     must not be cancelled), OR
+     *   - cancels the debate (status=cancelled, reason=manual) when there is no
+     *     finished result yet (the chair aborted early).
+     * Either way the main LiveKit room is deleted so no one can rejoin. The
+     * `room_closed` event is broadcast BEFORE deletion so it reaches everyone.
+     */
+    public function closeRoom(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        $chair = $this->chairParticipant($debate, $user->id);
+        if (! $chair) {
+            return $this->error('فقط قاضي الرئاسة يمكنه إغلاق الغرفة. | Only the chair judge can close the room.', [], 403);
+        }
+
+        if ($debate->status === 'cancelled') {
+            return $this->error('النقاش ملغى بالفعل. | Debate is already cancelled.', [], 422);
+        }
+
+        DB::transaction(function () use ($debate) {
+            $hasPendingResult = $debate->result()->exists() && $debate->result_revealed_at === null;
+
+            // Broadcast room_closed to the main room FIRST — before it's deleted.
+            if ($debate->livekit_room_name) {
+                try {
+                    $this->liveKit->sendDataToRoom($debate->livekit_room_name, ['event' => 'room_closed']);
+                } catch (\Throwable) {}
+            }
+
+            if ($hasPendingResult) {
+                // A finished result exists → reveal it rather than cancelling.
+                $debate->update(['result_revealed_at' => now()]);
+
+                if ($debate->result_room_name) {
+                    try {
+                        $this->liveKit->sendDataToRoom($debate->result_room_name, ['event' => 'result_revealed']);
+                    } catch (\Throwable) {}
+                }
+            } else {
+                // No finished result → the chair aborted; cancel the debate.
+                $debate->update(['status' => 'cancelled', 'cancellation_reason' => 'manual']);
+            }
+
+            // Delete the main room AFTER the broadcast so no one can rejoin.
+            if ($debate->livekit_room_name) {
+                try {
+                    $this->liveKit->deleteRoomIfExists($debate->livekit_room_name);
+                } catch (\Throwable) {}
+            }
+        });
+
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم إغلاق الغرفة. | Room closed.'
+        );
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**

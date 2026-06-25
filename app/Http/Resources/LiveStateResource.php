@@ -39,6 +39,9 @@ class LiveStateResource extends JsonResource
                 'result_revealed_at'   => $debate->result_revealed_at?->toIso8601String(),
                 'cancellation_reason'  => $debate->cancellation_reason,
                 'current_stage'        => $debate->current_stage,
+                // Server start time of the stage currently in progress, so a client
+                // that joins mid-speech can sync its timer instead of restarting at 0.
+                'current_stage_started_at' => $this->currentStageStartedAt($debate)?->toIso8601String(),
             ],
 
             'format' => $format ? [
@@ -239,6 +242,10 @@ class LiveStateResource extends JsonResource
 
     private function buildStages(Debate $debate): array
     {
+        // participant_id → user_id, so clients get the speaker directly per stage.
+        $userByParticipantId = $debate->participants
+            ->pluck('user_id', 'id');
+
         return $debate->phases->map(fn ($phase) => [
             'order_index'        => $phase->order_index,
             'name'               => $phase->name,
@@ -247,6 +254,9 @@ class LiveStateResource extends JsonResource
             'duration_seconds'   => $phase->duration_seconds,
             'status'             => $phase->status,
             'participant_id'     => $phase->participant_id,
+            'speaker_user_id'    => $phase->participant_id
+                ? ($userByParticipantId[$phase->participant_id] ?? null)
+                : null,
             'started_at'         => $phase->started_at?->toIso8601String(),
             'ended_at'           => $phase->ended_at?->toIso8601String(),
             'poi_raised_count'   => $phase->poi_raised_count,
@@ -254,6 +264,21 @@ class LiveStateResource extends JsonResource
             'audio_url'          => $phase->audio_url,
             'speech_text'        => $phase->speech_text,
         ])->toArray();
+    }
+
+    /**
+     * started_at of the phase whose order_index == current_stage (the one in
+     * progress), or null in the lobby / when not yet started.
+     */
+    private function currentStageStartedAt(Debate $debate): ?\Carbon\CarbonInterface
+    {
+        if ($debate->current_stage < 1) {
+            return null;
+        }
+
+        $phase = $debate->phases->firstWhere('order_index', $debate->current_stage);
+
+        return $phase?->started_at;
     }
 
     private function buildResult(Debate $debate, Request $request): mixed

@@ -63,7 +63,8 @@ class LiveKitController extends Controller
             $canSubscribe,
             $canPublishData,
             $canUpdateOwnMetadata,
-            $roomAdmin
+            $roomAdmin,
+            $user->name // display name → Participant.name on clients
         );
 
         return $this->success([

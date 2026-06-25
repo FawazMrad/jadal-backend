@@ -8,6 +8,7 @@ use Agence104\LiveKit\RoomCreateOptions;
 use Agence104\LiveKit\RoomServiceClient;
 use Agence104\LiveKit\VideoGrant;
 use App\Models\Debate;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Two URLs are used:
@@ -19,6 +20,9 @@ use App\Models\Debate;
  */
 class LiveKitService
 {
+    /** LiveKit DataPacket.Kind — RELIABLE = 0 (LOSSY = 1). Debate events must be reliable. */
+    private const DATA_KIND_RELIABLE = 0;
+
     private string $apiKey;
     private string $apiSecret;
     private string $url;   // wss:// — client connection URL (not used for server API calls)
@@ -30,6 +34,15 @@ class LiveKitService
         $this->host      = config('services.livekit.host');
         $this->apiKey    = config('services.livekit.key');
         $this->apiSecret = config('services.livekit.secret');
+    }
+
+    /**
+     * Builds the LiveKit RoomService client (Twirp over the http(s) host).
+     * Overridable so tests can assert the exact server-API calls.
+     */
+    protected function roomServiceClient(): RoomServiceClient
+    {
+        return new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
     }
 
     // ── Token generation ──────────────────────────────────────────────────────
@@ -73,7 +86,8 @@ class LiveKitService
         bool $canSubscribe,
         bool $canPublishData,
         bool $canUpdateOwnMetadata = false,
-        bool $roomAdmin = false
+        bool $roomAdmin = false,
+        ?string $displayName = null
     ): string {
         $grant = new VideoGrant();
         $grant->setRoomJoin(true);
@@ -95,6 +109,12 @@ class LiveKitService
             ->setIdentity($identity)
             ->setTtl(7200);
 
+        // Display name → surfaces as Participant.name on every client (used for
+        // labelling remote tiles). Identity stays the user id.
+        if ($displayName !== null && $displayName !== '') {
+            $tokenOptions->setName($displayName);
+        }
+
         $token = (new AccessToken($this->apiKey, $this->apiSecret))
             ->init($tokenOptions)
             ->setGrant($grant);
@@ -106,7 +126,7 @@ class LiveKitService
 
     public function createRoom(string $roomName, int $emptyTimeoutSeconds = 600): void
     {
-        $client  = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        $client  = $this->roomServiceClient();
         $options = (new RoomCreateOptions())
             ->setName($roomName)
             ->setEmptyTimeout($emptyTimeoutSeconds);
@@ -127,7 +147,7 @@ class LiveKitService
 
     public function deleteRoom(string $roomName): void
     {
-        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        $client = $this->roomServiceClient();
         $client->deleteRoom($roomName);
     }
 
@@ -171,29 +191,46 @@ class LiveKitService
 
     public function muteParticipant(string $roomName, string $identity, string $trackSid): void
     {
-        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        $client = $this->roomServiceClient();
         $client->mutePublishedTrack($roomName, $identity, $trackSid, true);
     }
 
     /**
-     * Broadcast a JSON payload to all participants in a room (or specific identities).
+     * Broadcast a JSON payload to participants in a room over the LiveKit data
+     * channel. With an empty $destinationIdentities the message is broadcast to
+     * EVERYONE in the room.
      *
-     * // TODO: SDK feature — RoomServiceClient::sendData is available in
-     * // agence104/livekit-server-sdk >= 1.4.0. If the installed version does
-     * // not expose it, fall back to a direct Twirp HTTP call below.
+     * The SDK signature is
+     *   sendData(string $room, string $data, int $kind, array $destinationIdentities = [], ?string $topic)
+     * so $kind (RELIABLE = 0) MUST be the 3rd argument. A previous version passed
+     * the identities array there, which threw a TypeError that the call sites
+     * swallowed — so NO debate event ever reached any client. This is non-fatal
+     * (a LiveKit hiccup must not 500 a next-stage request) but always logged.
      */
     public function sendDataToRoom(string $roomName, array $payload, ?array $destinationIdentities = null): void
     {
-        $client = new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        $event = $payload['event'] ?? 'unknown';
 
-        if (method_exists($client, 'sendData')) {
-            // Positional call — SDK signature varies by version.
-            $client->sendData($roomName, json_encode($payload), $destinationIdentities ?? []);
-            return;
+        try {
+            $this->roomServiceClient()->sendData(
+                $roomName,
+                json_encode($payload),
+                self::DATA_KIND_RELIABLE,
+                $destinationIdentities ?? [] // empty = broadcast to everyone in the room
+            );
+
+            Log::info('LiveKit sendData OK', [
+                'room'      => $roomName,
+                'event'     => $event,
+                'broadcast' => empty($destinationIdentities),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('LiveKit sendData FAILED', [
+                'room'  => $roomName,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
         }
-
-        // Fallback: Twirp HTTP endpoint with a signed JWT.
-        $this->sendDataViaTwirp($roomName, $payload, $destinationIdentities);
     }
 
     // ── Egress ────────────────────────────────────────────────────────────────
@@ -232,18 +269,6 @@ class LiveKitService
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
-
-    private function sendDataViaTwirp(string $roomName, array $payload, ?array $destinationIdentities): void
-    {
-        $body = [
-            'room'          => $roomName,
-            'data'          => base64_encode(json_encode($payload)),
-            'kind'          => 1, // RELIABLE
-            'destination_sids' => $destinationIdentities ?? [],
-        ];
-
-        $this->twirpRequest('RoomService', 'SendData', $body);
-    }
 
     private function twirpRequest(string $service, string $method, array $body): array
     {

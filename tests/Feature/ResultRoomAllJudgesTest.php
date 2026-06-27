@@ -41,9 +41,11 @@ class ResultRoomAllJudgesTest extends TestCase
             ],
         ]);
 
+        // Result phase: speeches done, debate still `live` → result room is open.
         return Debate::factory()->create([
             'format_id'        => $format->id,
-            'status'           => 'completed',
+            'status'           => 'live',
+            'speeches_completed_at' => now(),
             'result_room_name' => 'debate-res-room',
             'result_revealed_at' => null,
         ]);

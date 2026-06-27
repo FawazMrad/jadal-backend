@@ -102,19 +102,33 @@ class LiveDebateController extends Controller
 
         $replySpeakerId = $request->reply_speaker_user_id; // null when format has no reply
 
-        DB::transaction(function () use ($sideParticipants, $speakerIds, $side, $replySpeakerId) {
-            $debateId = $sideParticipants->first()->debate_id;
+        DB::transaction(function () use ($debate, $sideParticipants, $speakerIds, $side, $replySpeakerId) {
+            $debateId = $debate->id;
 
             // Reset speaking orders AND reply-speaker flag for this side.
             DebateParticipant::whereIn('id', $sideParticipants->pluck('id'))
                 ->update(['speaking_phase_order' => null, 'is_reply_speaker' => false]);
 
-            // Assign new order (1-based array position).
-            foreach ($speakerIds as $order => $userId) {
+            // Persist the full ordered assignment (array of user_ids, duplicates
+            // allowed) — this is the authoritative source for per-stage speaker
+            // resolution and the lobby team layout. A 2-person team filling 3
+            // slots sends e.g. [A, B, A]; A then covers slots 1 and 3.
+            $orderColumn = $side === 'proposition' ? 'prop_speaker_order' : 'opp_speaker_order';
+            $debate->update([$orderColumn => array_map('intval', $speakerIds)]);
+
+            // speaking_phase_order holds only ONE slot per participant, so set it to
+            // the FIRST slot each distinct user appears in (kept for display /
+            // backward-compat; the order array above is authoritative for multi-role).
+            $seen = [];
+            foreach ($speakerIds as $idx => $userId) {
+                if (in_array((int) $userId, $seen, true)) {
+                    continue;
+                }
+                $seen[] = (int) $userId;
                 DebateParticipant::where('debate_id', $debateId)
                     ->where('user_id', $userId)
                     ->where('side', $side)
-                    ->update(['speaking_phase_order' => $order + 1]);
+                    ->update(['speaking_phase_order' => $idx + 1]);
             }
 
             // Flag the chosen reply speaker (validated to be slot 1 or 2).
@@ -181,26 +195,31 @@ class LiveDebateController extends Controller
 
             $nextStage = $debate->current_stage + 1;
 
-            // Past the last stage → debate completed.
+            // Past the last speech → the SPEAKING phase is done, but the debate is
+            // NOT over. Status stays `live` (the "result phase"): the main room
+            // stays open for rejoining, the result room opens for judges to
+            // deliberate, and the chair submits + reveals a result. Only close-room
+            // finalises the debate (→ completed/cancelled). We do NOT set completed here.
             if ($nextStage > $totalStages) {
                 $debate->update([
-                    'status'        => 'completed',
-                    'ended_at'      => now(),
-                    'current_stage' => $nextStage,
+                    'speeches_completed_at' => now(),
+                    'ended_at'              => now(),   // end of the speaking portion
+                    'current_stage'         => $nextStage, // > total = "past last speech" marker
                 ]);
 
-                // Open the result room.
+                // Open the result room (judges-only — see LiveKitController).
                 app(LiveKitService::class)->createRoomIfMissing($debate->result_room_name);
 
-                // Notify main room.
+                // Tell the main room the speeches are done / result phase is open.
+                // Status is STILL `live` — clients must not treat this as "finished".
                 try {
                     app(LiveKitService::class)->sendDataToRoom(
                         $debate->livekit_room_name,
-                        ['event' => 'debate_completed']
+                        ['event' => 'speeches_completed', 'result_room' => $debate->result_room_name]
                     );
                 } catch (\Throwable) {}
 
-                return $debate;
+                return $debate->fresh();
             }
 
             // Advance to the next stage.
@@ -356,8 +375,10 @@ class LiveDebateController extends Controller
             return $this->error('فقط قاضي الرئاسة يمكنه تقديم النتيجة. | Only the chair judge can submit results.', [], 403);
         }
 
-        if ($debate->status !== 'completed') {
-            return $this->error('يجب أن ينتهي النقاش أولاً (all stages must complete via /next-stage). | Debate is not completed.', [], 422);
+        // The result can be submitted during the result phase: speeches are done
+        // (past the last stage) but the debate is still `live` and not yet closed.
+        if (! $debate->isInResultPhase()) {
+            return $this->error('يجب إنهاء جميع المراحل أولاً عبر /next-stage. | Speeches must be completed first (advance past the last stage via /next-stage).', [], 422);
         }
 
         if ($debate->result()->exists()) {
@@ -441,8 +462,11 @@ class LiveDebateController extends Controller
             return $this->error('فقط قاضي الرئاسة يمكنه الكشف عن النتيجة. | Only the chair judge can reveal the result.', [], 403);
         }
 
-        if ($debate->status !== 'completed') {
-            return $this->error('النقاش لم ينته بعد. | Debate is not completed.', [], 422);
+        // Reveal ("share result") happens from the LIVE room during the result
+        // phase — status stays `live`. It does NOT finalise the debate; only
+        // close-room does that.
+        if (! $debate->isInResultPhase()) {
+            return $this->error('النقاش لم يصل إلى مرحلة النتائج بعد. | Debate is not in the result phase yet.', [], 422);
         }
 
         if (! $debate->result()->exists()) {
@@ -455,14 +479,9 @@ class LiveDebateController extends Controller
 
         $debate->update(['result_revealed_at' => now()]);
 
-        // Close the result room.
-        if ($debate->result_room_name) {
-            try {
-                $this->liveKit->deleteRoomIfExists($debate->result_room_name);
-            } catch (\Throwable) {}
-        }
-
-        // Broadcast to main room.
+        // The result room is left open through the result phase (it's torn down on
+        // close-room). Broadcast the reveal to the main room so everyone there
+        // sees the result — the chair shares it from the live room.
         try {
             $this->liveKit->sendDataToRoom(
                 $debate->livekit_room_name,
@@ -559,8 +578,10 @@ class LiveDebateController extends Controller
             return $this->error('فقط قاضي الرئاسة يمكنه إغلاق الغرفة الرئيسية. | Only the chair judge can close the main room.', [], 403);
         }
 
-        if ($debate->status !== 'completed') {
-            return $this->error('لا يمكن إغلاق الغرفة الرئيسية إلا بعد انتهاء النقاش. | Main room can only be closed after the debate is completed.', [], 422);
+        // closeMain is the legacy "finish + close the main room" action; it is only
+        // meaningful in the result phase (or once already completed).
+        if (! $debate->isInResultPhase() && $debate->status !== 'completed') {
+            return $this->error('لا يمكن إغلاق الغرفة الرئيسية إلا في مرحلة النتائج. | Main room can only be closed during the result phase.', [], 422);
         }
 
         DB::transaction(function () use ($debate) {
@@ -571,9 +592,17 @@ class LiveDebateController extends Controller
                 } catch (\Throwable) {}
             }
 
-            // If a result exists but hasn't been revealed yet, reveal it now.
-            if ($debate->result()->exists() && $debate->result_revealed_at === null) {
-                $debate->update(['result_revealed_at' => now()]);
+            // A result exists → the debate is finished: mark completed and reveal
+            // if not already revealed.
+            if ($debate->result()->exists()) {
+                $updates = ['status' => 'completed'];
+                if ($debate->ended_at === null) {
+                    $updates['ended_at'] = now();
+                }
+                if ($debate->result_revealed_at === null) {
+                    $updates['result_revealed_at'] = now();
+                }
+                $debate->update($updates);
 
                 // Main room is gone — broadcast the reveal on the result room instead.
                 if ($debate->result_room_name) {
@@ -584,7 +613,7 @@ class LiveDebateController extends Controller
                         );
                     } catch (\Throwable) {}
                 }
-            } elseif (! $debate->result()->exists()) {
+            } else {
                 // Edge case: closing main with no result submitted reveals nothing.
                 \Illuminate\Support\Facades\Log::warning(
                     "Debate {$debate->id}: main room closed before any result was submitted."
@@ -622,23 +651,39 @@ class LiveDebateController extends Controller
             return $this->error('فقط قاضي الرئاسة يمكنه إغلاق الغرفة. | Only the chair judge can close the room.', [], 403);
         }
 
-        if ($debate->status === 'cancelled') {
-            return $this->error('النقاش ملغى بالفعل. | Debate is already cancelled.', [], 422);
+        // close-room is the single terminal action. A debate that is already
+        // finalised (completed or cancelled) cannot be closed again.
+        if (in_array($debate->status, ['cancelled', 'completed'], true)) {
+            return $this->error('النقاش منتهٍ بالفعل. | Debate is already finalised.', [], 422);
         }
 
         DB::transaction(function () use ($debate) {
-            $hasPendingResult = $debate->result()->exists() && $debate->result_revealed_at === null;
+            // The terminal rule: room closed AND a result stored → completed;
+            // room closed with NO result → cancelled.
+            $hasResult   = $debate->result()->exists();
+            $finalStatus = $hasResult ? 'completed' : 'cancelled';
 
-            // Broadcast room_closed to the main room FIRST — before it's deleted.
+            // Broadcast room_closed (with the resolved final status) to the main
+            // room FIRST — before it's deleted — so every client receives it.
             if ($debate->livekit_room_name) {
                 try {
-                    $this->liveKit->sendDataToRoom($debate->livekit_room_name, ['event' => 'room_closed']);
+                    $this->liveKit->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        ['event' => 'room_closed', 'status' => $finalStatus]
+                    );
                 } catch (\Throwable) {}
             }
 
-            if ($hasPendingResult) {
-                // A finished result exists → reveal it rather than cancelling.
-                $debate->update(['result_revealed_at' => now()]);
+            if ($hasResult) {
+                // Finished debate: mark completed and reveal the result if needed.
+                $updates = ['status' => 'completed'];
+                if ($debate->ended_at === null) {
+                    $updates['ended_at'] = now();
+                }
+                if ($debate->result_revealed_at === null) {
+                    $updates['result_revealed_at'] = now();
+                }
+                $debate->update($updates);
 
                 if ($debate->result_room_name) {
                     try {
@@ -646,15 +691,18 @@ class LiveDebateController extends Controller
                     } catch (\Throwable) {}
                 }
             } else {
-                // No finished result → the chair aborted; cancel the debate.
+                // No result → the chair aborted; cancel the debate.
                 $debate->update(['status' => 'cancelled', 'cancellation_reason' => 'manual']);
             }
 
-            // Delete the main room AFTER the broadcast so no one can rejoin.
-            if ($debate->livekit_room_name) {
-                try {
-                    $this->liveKit->deleteRoomIfExists($debate->livekit_room_name);
-                } catch (\Throwable) {}
+            // Delete BOTH the main and result rooms AFTER the broadcasts so no one
+            // can rejoin once the debate is closed.
+            foreach ([$debate->livekit_room_name, $debate->result_room_name] as $room) {
+                if ($room) {
+                    try {
+                        $this->liveKit->deleteRoomIfExists($room);
+                    } catch (\Throwable) {}
+                }
             }
         });
 
@@ -720,6 +768,27 @@ class LiveDebateController extends Controller
             $speakerSlot = (int) ceil($orderIndex / 2);
         }
 
+        // Authoritative path: the stored speaker order (array of user_ids, with
+        // duplicates allowed) resolves slot → user, so one debater can cover
+        // multiple slots (multi-role teams). Slot is 1-based.
+        $order = $debate->speakerOrderFor($side);
+        $userId = $order[$speakerSlot - 1] ?? null;
+
+        if ($userId) {
+            $p = DebateParticipant::where('debate_id', $debate->id)
+                ->where('side', $side)
+                ->where('role', 'debater')
+                ->where('status', 'approved')
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($p) {
+                return $p;
+            }
+        }
+
+        // Legacy fallback: resolve by the per-participant speaking_phase_order
+        // (used when no speaker order array was stored, e.g. older debates).
         return DebateParticipant::where('debate_id', $debate->id)
             ->where('side', $side)
             ->where('role', 'debater')

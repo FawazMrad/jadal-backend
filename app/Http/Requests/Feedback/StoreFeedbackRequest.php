@@ -79,8 +79,11 @@ class StoreFeedbackRequest extends FormRequest
                 return; // exists rule already failed
             }
 
-            // Only after the debate is completed AND the result has been revealed.
-            if ($debate->status !== 'completed' || $debate->result_revealed_at === null) {
+            // Ratings open once the result has been REVEALED. Under the result-phase
+            // lifecycle (B1) the reveal happens while the debate is still `live`
+            // (before close-room flips it to completed), so gate on the reveal
+            // timestamp, not on status === 'completed'.
+            if ($debate->result_revealed_at === null) {
                 $v->errors()->add('type', 'Ratings can only be submitted after the result is revealed.');
             }
 

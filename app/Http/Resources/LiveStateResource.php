@@ -42,6 +42,10 @@ class LiveStateResource extends JsonResource
                 // Server start time of the stage currently in progress, so a client
                 // that joins mid-speech can sync its timer instead of restarting at 0.
                 'current_stage_started_at' => $this->currentStageStartedAt($debate)?->toIso8601String(),
+                // Set when the chair advances past the last speech. While status is
+                // STILL `live`, this is the canonical "speeches done / result room
+                // open" signal — drive the result-room UI off this, NOT off status.
+                'speeches_completed_at' => $debate->speeches_completed_at?->toIso8601String(),
             ],
 
             'format' => $format ? [
@@ -121,8 +125,9 @@ class LiveStateResource extends JsonResource
             && in_array($debate->status, ['teams-selected', 'live'])
             && $debate->current_stage === 0;
 
-        $resultOpen = $debate->status === 'completed'
-            && $debate->result_revealed_at === null;
+        // Result room is open during the result phase (speeches done, debate still
+        // `live`). It is judges-only and stays open until close-room tears it down.
+        $resultOpen = $debate->isInResultPhase();
 
         // Any authenticated user can join the main room (participant or viewer),
         // both in lobby mode and during the debate.
@@ -228,6 +233,22 @@ class LiveStateResource extends JsonResource
             ->sortBy('speaking_phase_order')
             ->values();
 
+        // N-slot speaking order (array of user_ids, duplicates allowed) — drives
+        // the fixed equal-size team-card layout and the order dialog. A user who
+        // fills slots 1 & 3 appears in both, so a 2-person team still yields 3 slots.
+        $speakingOrder = collect($debate->speakerOrderFor($side))
+            ->values()
+            ->map(function ($userId, $i) use ($participants) {
+                $p = $participants->firstWhere('user_id', $userId);
+
+                return [
+                    'phase_order'    => $i + 1,
+                    'user_id'        => (int) $userId,
+                    'participant_id' => $p?->id,
+                ];
+            })
+            ->all();
+
         return [
             'team'     => $team,
             'is_random' => $isRandom,
@@ -236,7 +257,8 @@ class LiveStateResource extends JsonResource
                     ->map(fn ($p) => $p->user)
                     ->values()
             ),
-            'speakers' => DebateParticipantResource::collection($speakers),
+            'speakers'       => DebateParticipantResource::collection($speakers),
+            'speaking_order' => $speakingOrder,
         ];
     }
 
@@ -246,24 +268,67 @@ class LiveStateResource extends JsonResource
         $userByParticipantId = $debate->participants
             ->pluck('user_id', 'id');
 
-        return $debate->phases->map(fn ($phase) => [
-            'order_index'        => $phase->order_index,
-            'name'               => $phase->name,
-            'role'               => null,  // stored in name; can be derived from order_index parity
-            'is_reply'           => (bool) $phase->is_reply,
-            'duration_seconds'   => $phase->duration_seconds,
-            'status'             => $phase->status,
-            'participant_id'     => $phase->participant_id,
-            'speaker_user_id'    => $phase->participant_id
+        return $debate->phases->map(function ($phase) use ($debate, $userByParticipantId) {
+            // During the debate the speaker is locked onto the phase. Before the
+            // stage runs (lobby) fall back to the pre-assigned speaking order, so
+            // the scoring form / team layout can show who WILL speak — including a
+            // user who covers multiple slots (multi-role teams).
+            $speakerUserId = $phase->participant_id
                 ? ($userByParticipantId[$phase->participant_id] ?? null)
-                : null,
-            'started_at'         => $phase->started_at?->toIso8601String(),
-            'ended_at'           => $phase->ended_at?->toIso8601String(),
-            'poi_raised_count'   => $phase->poi_raised_count,
-            'poi_answered_count' => $phase->poi_answered_count,
-            'audio_url'          => $phase->audio_url,
-            'speech_text'        => $phase->speech_text,
-        ])->toArray();
+                : $this->expectedSpeakerUserId($debate, $phase);
+
+            return [
+                'id'                 => $phase->id, // DB phase id — needed for POST /stages/{id}/poi
+                'order_index'        => $phase->order_index,
+                'name'               => $phase->name,
+                'role'               => null,  // stored in name; can be derived from order_index parity
+                'is_reply'           => (bool) $phase->is_reply,
+                'duration_seconds'   => $phase->duration_seconds,
+                'status'             => $phase->status,
+                'participant_id'     => $phase->participant_id,
+                'speaker_user_id'    => $speakerUserId !== null ? (int) $speakerUserId : null,
+                'started_at'         => $phase->started_at?->toIso8601String(),
+                'ended_at'           => $phase->ended_at?->toIso8601String(),
+                'poi_raised_count'   => $phase->poi_raised_count,
+                'poi_answered_count' => $phase->poi_answered_count,
+                'audio_url'          => $phase->audio_url,
+                'speech_text'        => $phase->speech_text,
+            ];
+        })->toArray();
+    }
+
+    /**
+     * The user_id expected to speak in a phase based on the pre-assigned speaking
+     * order (used before the stage runs, e.g. in the lobby). Mirrors
+     * LiveDebateController::resolveStageSpeaker. Returns null when unassigned.
+     */
+    private function expectedSpeakerUserId(Debate $debate, $phase): ?int
+    {
+        $orderIndex = $phase->order_index;
+
+        if ((bool) $phase->is_reply) {
+            $side = str_contains(strtolower((string) $phase->name), 'opposition')
+                ? 'opposition' : 'proposition';
+
+            $reply = $debate->participants->first(
+                fn ($p) => $p->side === $side
+                    && $p->role === 'debater'
+                    && $p->status === 'approved'
+                    && $p->is_reply_speaker
+            );
+            if ($reply) {
+                return (int) $reply->user_id;
+            }
+            $slot = 1;
+        } else {
+            $side = ($orderIndex % 2 === 1) ? 'proposition' : 'opposition';
+            $slot = (int) ceil($orderIndex / 2);
+        }
+
+        $order  = $debate->speakerOrderFor($side);
+        $userId = $order[$slot - 1] ?? null;
+
+        return $userId !== null ? (int) $userId : null;
     }
 
     /**

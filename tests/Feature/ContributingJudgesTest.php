@@ -38,9 +38,11 @@ class ContributingJudgesTest extends TestCase
             ],
         ]);
 
+        // Result phase: speeches done, still `live` → the chair may submit a result.
         $debate = Debate::factory()->create([
             'format_id' => $format->id,
-            'status'    => 'completed',
+            'status'    => 'live',
+            'speeches_completed_at' => now(),
         ]);
 
         // 6 phases so the stage_scores count matches.

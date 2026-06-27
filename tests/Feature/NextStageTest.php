@@ -114,7 +114,7 @@ class NextStageTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_advances_through_all_stages_to_completed(): void
+    public function test_advancing_past_last_stage_enters_result_phase_not_completed(): void
     {
         [$debate, $chair] = $this->makeFullDebate();
 
@@ -125,14 +125,17 @@ class NextStageTest extends TestCase
                 ->assertStatus(200);
         }
 
-        // One more call should push past the last stage → completed.
+        // One more call pushes past the last speech → the RESULT PHASE.
+        // Status MUST stay `live` (not completed); only close-room finalises it.
         $this->actingAs($chair)
             ->postJson("/api/debates/{$debate->id}/next-stage")
             ->assertStatus(200);
 
         $debate->refresh();
-        $this->assertEquals('completed', $debate->status);
+        $this->assertEquals('live', $debate->status);
+        $this->assertNotNull($debate->speeches_completed_at);
         $this->assertNotNull($debate->ended_at);
+        $this->assertTrue($debate->isInResultPhase());
     }
 
     public function test_current_stage_increments_correctly(): void
@@ -158,7 +161,9 @@ class NextStageTest extends TestCase
         }
 
         $debate->refresh();
-        $this->assertEquals('completed', $debate->status);
+        // Result phase: still live, speeches done, result room provisioned.
+        $this->assertEquals('live', $debate->status);
+        $this->assertNotNull($debate->speeches_completed_at);
 
         // LiveKit mock should have been called to create the result room.
         // (Verified via mock setup — no exception thrown means call succeeded.)

@@ -91,6 +91,26 @@ class ReplySpeakerSelectionTest extends TestCase
         $this->assertEquals(1, $count);
     }
 
+    public function test_live_state_exposes_reply_speaker_flag(): void
+    {
+        [$debate, $leader, $members] = $this->makeTeamSelectDebate();
+
+        $this->actingAs($leader)->postJson("/api/debates/{$debate->id}/team-speakers", [
+            'side'                  => 'proposition',
+            'speaker_user_ids'      => [$members[0]->id, $members[1]->id, $members[2]->id],
+            'reply_speaker_user_id' => $members[1]->id, // slot 2
+        ])->assertStatus(200);
+
+        $response = $this->actingAs($leader)->getJson("/api/debates/{$debate->id}/live-state");
+        $response->assertStatus(200);
+
+        // The reply speaker carries is_reply_speaker = true; the others false.
+        $speakers = collect($response->json('data.proposition.speakers'))
+            ->keyBy(fn ($s) => $s['user']['id']);
+        $this->assertTrue($speakers[$members[1]->id]['is_reply_speaker']);
+        $this->assertFalse($speakers[$members[0]->id]['is_reply_speaker']);
+    }
+
     public function test_leader_cannot_pick_slot_3_as_reply_speaker(): void
     {
         [$debate, $leader, $members] = $this->makeTeamSelectDebate();

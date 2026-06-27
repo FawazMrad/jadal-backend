@@ -69,6 +69,22 @@ class FeedbackRatingTest extends TestCase
         ]);
     }
 
+    public function test_rating_allowed_during_live_result_phase(): void
+    {
+        // Result phase: result revealed while the debate is still `live` (B1) —
+        // before close-room. Ratings must be accepted here, not only once completed.
+        [$debate, $debater] = $this->revealedDebate();
+        $debate->update(['status' => 'live', 'speeches_completed_at' => now()]);
+
+        $response = $this->actingAs($debater)->postJson('/api/feedback', [
+            'debate_id' => $debate->id,
+            'type'      => 'rating_debate',
+            'scores'    => ['rating' => 5],
+        ]);
+
+        $response->assertStatus(201);
+    }
+
     public function test_rating_out_of_range_is_rejected(): void
     {
         [$debate, $debater] = $this->revealedDebate();

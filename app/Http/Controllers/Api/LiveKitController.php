@@ -146,8 +146,9 @@ class LiveKitController extends Controller
     }
 
     /**
-     * Result room. Open after the debate completes and before the reveal. Any
-     * approved judge with an assigned order may publish.
+     * Result room. Open during the result phase — speeches are done but the
+     * debate is still `live` (not yet closed). JUDGES ONLY: any approved judge
+     * with an assigned order may publish; everyone else is rejected (403).
      */
     private function resolveResultRoom(Debate $debate, ?DebateParticipant $p): array
     {
@@ -156,8 +157,7 @@ class LiveKitController extends Controller
             return [null, false, false, false, false, false, null];
         }
 
-        $resultOpen = $debate->status === 'completed' && $debate->result_revealed_at === null;
-        if (! $resultOpen) {
+        if (! $debate->isInResultPhase()) {
             return [null, false, false, false, false, false, null];
         }
 

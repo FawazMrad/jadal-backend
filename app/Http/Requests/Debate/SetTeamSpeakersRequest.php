@@ -18,8 +18,11 @@ class SetTeamSpeakersRequest extends FormRequest
 
         return [
             'side'               => ['required', Rule::in(['proposition', 'opposition'])],
-            'speaker_user_ids'   => ['required', 'array', 'size:3'],
-            'speaker_user_ids.*' => ['required', 'integer', 'exists:users,id', 'distinct'],
+            // Ordered speaking assignment, one entry per speaking slot. Duplicates
+            // ARE allowed so a single debater can cover multiple slots (multi-role
+            // teams, e.g. a 2-person team filling 3 slots as [A, B, A]).
+            'speaker_user_ids'   => ['required', 'array', 'size:' . \App\Models\DebateFormat::SPEAKERS_PER_SIDE],
+            'speaker_user_ids.*' => ['required', 'integer', 'exists:users,id'],
             'reply_speaker_user_id' => [
                 $hasReply ? 'required' : 'prohibited',
                 'integer',

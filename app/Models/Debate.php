@@ -36,6 +36,9 @@ class Debate extends Model
         'motion_revealed_at',
         'prep_rooms_opened_at',
         'result_revealed_at',
+        'speeches_completed_at',
+        'prop_speaker_order',
+        'opp_speaker_order',
         'cancellation_reason',
     ];
 
@@ -50,7 +53,33 @@ class Debate extends Model
             'motion_revealed_at'  => 'datetime',
             'prep_rooms_opened_at' => 'datetime',
             'result_revealed_at'  => 'datetime',
+            'speeches_completed_at' => 'datetime',
+            'prop_speaker_order'  => 'array',
+            'opp_speaker_order'   => 'array',
         ];
+    }
+
+    /**
+     * The debate is in the "result phase" once the chair has advanced past the
+     * last speech (speeches_completed_at set) but the room hasn't been closed
+     * yet — so status is still `live`. This is when the result room is open,
+     * the chair may submit/reveal a result, and everyone can still rejoin the
+     * main room. close-room is the only thing that ends it (→ completed/cancelled).
+     */
+    public function isInResultPhase(): bool
+    {
+        return $this->status === 'live' && $this->speeches_completed_at !== null;
+    }
+
+    /**
+     * Ordered speaking assignment (array of user_ids, duplicates allowed) for a
+     * side, or [] when not yet set.
+     */
+    public function speakerOrderFor(string $side): array
+    {
+        $order = $side === 'proposition' ? $this->prop_speaker_order : $this->opp_speaker_order;
+
+        return is_array($order) ? array_values($order) : [];
     }
 
     public function format(): BelongsTo

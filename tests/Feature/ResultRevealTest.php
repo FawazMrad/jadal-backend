@@ -36,9 +36,12 @@ class ResultRevealTest extends TestCase
             ],
         ]);
 
+        // Result phase: speeches are done (speeches_completed_at set) but the
+        // debate is still `live` — submit/reveal happen here, before close-room.
         $debate = Debate::factory()->create([
             'format_id'       => $format->id,
-            'status'          => 'completed',
+            'status'          => 'live',
+            'speeches_completed_at' => now(),
             'result_room_name' => 'debate-result-room',
         ]);
 

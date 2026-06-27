@@ -66,16 +66,24 @@ class LiveKitWebhookController extends Controller
 
         $participant->update(['is_attended' => true]);
 
-        // Chair election — only relevant in the main room.
-        if ($debate && $roomName === $debate->livekit_room_name && $participant->role === 'judge') {
+        $isMainOrResult = in_array(
+            $roomName,
+            [$debate->livekit_room_name, $debate->result_room_name],
+            true
+        );
+
+        // Chair election runs on judge presence in the main room AND the result
+        // room — judges deliberate in the result room (B3). The highest-ranked
+        // attended judge is (re-)elected and chair_elected is broadcast to both.
+        if ($isMainOrResult && $participant->role === 'judge') {
             $this->electChair($debate);
         }
 
-        // Broadcast attendance to main room.
-        if ($debate && $roomName === $debate->livekit_room_name) {
+        // Broadcast attendance to whichever room the participant joined.
+        if ($isMainOrResult) {
             try {
                 $this->liveKit->sendDataToRoom(
-                    $debate->livekit_room_name,
+                    $roomName,
                     ['event' => 'participant_attended', 'user_id' => $userId]
                 );
             } catch (\Throwable) {}
@@ -92,7 +100,7 @@ class LiveKitWebhookController extends Controller
         }
 
         $debate = $this->findDebateByRoom($roomName);
-        if (! $debate || $roomName !== $debate->livekit_room_name) {
+        if (! $debate || ! in_array($roomName, [$debate->livekit_room_name, $debate->result_room_name], true)) {
             return;
         }
 
@@ -101,7 +109,9 @@ class LiveKitWebhookController extends Controller
             ->where('user_id', $userId)
             ->first();
 
-        // If the leaver was the chair and the debate is live, re-elect.
+        // If the leaver was the chair and the debate is still live (which now
+        // includes the whole result phase), re-elect among the remaining judges —
+        // whether they left the main room or the result room.
         if ($participant && $participant->is_chair && $debate->status === 'live') {
             $this->electChair($debate, excludeUserId: $userId);
         }
@@ -192,14 +202,21 @@ class LiveKitWebhookController extends Controller
         if ($newChair) {
             $newChair->update(['is_chair' => true]);
 
-            // Broadcast only when the chair actually changed.
+            // Broadcast only when the chair actually changed. Send to BOTH the main
+            // and result rooms so the new chair gains moderation authority wherever
+            // judges are present (deliberation happens in the result room — B3/B5).
             if ((int) $newChair->user_id !== (int) $previousChairUserId) {
-                try {
-                    $this->liveKit->sendDataToRoom(
-                        $debate->livekit_room_name,
-                        ['event' => 'chair_elected', 'chair_user_id' => (int) $newChair->user_id]
-                    );
-                } catch (\Throwable) {}
+                foreach ([$debate->livekit_room_name, $debate->result_room_name] as $room) {
+                    if (! $room) {
+                        continue;
+                    }
+                    try {
+                        $this->liveKit->sendDataToRoom(
+                            $room,
+                            ['event' => 'chair_elected', 'chair_user_id' => (int) $newChair->user_id]
+                        );
+                    } catch (\Throwable) {}
+                }
             }
         }
     }

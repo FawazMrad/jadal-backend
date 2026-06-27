@@ -19,6 +19,9 @@ class DebateParticipantResource extends JsonResource
             'is_chair'             => (bool) $this->is_chair,
             'is_attended'          => (bool) $this->is_attended,
             'speaking_phase_order' => $this->speaking_phase_order,
+            // The chosen reply speaker (reply-format debates) — lets the client
+            // label "PR/OR" and pre-select the reply speaker in the order dialog.
+            'is_reply_speaker'     => (bool) $this->is_reply_speaker,
         ];
     }
 }

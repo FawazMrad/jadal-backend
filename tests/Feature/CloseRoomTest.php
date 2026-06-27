@@ -70,19 +70,21 @@ class CloseRoomTest extends TestCase
         $this->assertNull($debate->result_revealed_at);
     }
 
-    public function test_chair_closing_completed_debate_with_pending_result_reveals_not_cancels(): void
+    public function test_chair_closing_result_phase_with_stored_result_completes_not_cancels(): void
     {
-        [$debate, $chair] = $this->makeDebate('completed');
+        // Result phase: speeches done, still `live`, a result is stored but not
+        // yet revealed. Closing must COMPLETE (not cancel) and reveal it.
+        [$debate, $chair] = $this->makeDebate('live');
+        $debate->update(['speeches_completed_at' => now(), 'result_revealed_at' => null]);
         DebateResult::factory()->create([
             'debate_id' => $debate->id, 'judge_id' => $chair->id, 'submitted_at' => now(),
         ]);
-        $debate->update(['result_revealed_at' => null]);
 
         $response = $this->actingAs($chair)->postJson("/api/debates/{$debate->id}/close-room");
 
         $response->assertStatus(200);
         $debate->refresh();
-        // A finished result must NOT be cancelled — it gets revealed instead.
+        // A finished result must NOT be cancelled — the debate is completed + revealed.
         $this->assertEquals('completed', $debate->status);
         $this->assertNotNull($debate->result_revealed_at);
         $this->assertContains('send:result_revealed@debate-cr-result', $this->calls);

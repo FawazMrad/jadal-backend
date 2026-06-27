@@ -86,6 +86,12 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::delete('/{post}',     [BlogController::class, 'destroy']) ->name('destroy');
     });
 
+    // Blog taxonomy lists — readable by ANY auth user (used to populate the
+    // category/tag pickers when authoring a post). Same URLs as before; the
+    // create/update/delete for these stay admin-only (see the admin group).
+    Route::get('/admin/blog/categories', [AdminBlogController::class, 'listCategories'])->name('admin.blog.categories.index');
+    Route::get('/admin/blog/tags',       [AdminBlogController::class, 'listTags'])      ->name('admin.blog.tags.index');
+
     // ── Surveys — user-facing (any auth user) ─────────────────────────────────
     Route::prefix('surveys')->name('surveys.')->group(function (): void {
         Route::get('/',                  [SurveyController::class, 'index'])   ->name('index');
@@ -222,15 +228,16 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::patch('/{post}/reject',  [AdminBlogController::class, 'reject'])  ->name('reject');
             Route::delete('/{post}',        [AdminBlogController::class, 'destroy']) ->name('destroy');
 
+            // NOTE: the GET (list) routes for categories & tags are registered in
+            // the authenticated group above (readable by ANY auth user — needed to
+            // author posts). Only the writes below stay admin-only.
             Route::prefix('categories')->name('categories.')->group(function (): void {
-                Route::get('/',              [AdminBlogController::class, 'listCategories'])  ->name('index');
                 Route::post('/',             [AdminBlogController::class, 'storeCategory'])   ->name('store');
                 Route::put('/{category}',    [AdminBlogController::class, 'updateCategory'])  ->name('update');
                 Route::delete('/{category}', [AdminBlogController::class, 'destroyCategory']) ->name('destroy');
             });
 
             Route::prefix('tags')->name('tags.')->group(function (): void {
-                Route::get('/',          [AdminBlogController::class, 'listTags'])   ->name('index');
                 Route::post('/',         [AdminBlogController::class, 'storeTag'])   ->name('store');
                 Route::put('/{tag}',     [AdminBlogController::class, 'updateTag'])  ->name('update');
                 Route::delete('/{tag}',  [AdminBlogController::class, 'destroyTag']) ->name('destroy');

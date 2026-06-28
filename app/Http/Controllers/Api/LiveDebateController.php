@@ -171,6 +171,15 @@ class LiveDebateController extends Controller
             return $this->error('النقاش ليس في حالة live. | Debate is not live.', [], 422);
         }
 
+        // Once the speaking portion is finished (result phase) there is nothing
+        // left to advance: the only forward path is submit/reveal → close-room.
+        // Without this guard the chair can keep pressing next-stage, which
+        // re-stamps speeches_completed_at/ended_at and pushes current_stage past
+        // the marker (the trace showed it walk 7 → 8 → 9). Reject it.
+        if ($debate->speeches_completed_at !== null) {
+            return $this->error('انتهت مرحلة المتحدثين بالفعل. | The speaking phase is already complete; advancing further is not allowed.', [], 422);
+        }
+
         $result = DB::transaction(function () use ($debate, $user) {
             $totalStages = $debate->phases()->count();
 

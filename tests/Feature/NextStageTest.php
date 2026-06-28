@@ -170,6 +170,28 @@ class NextStageTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_cannot_advance_after_speeches_completed(): void
+    {
+        // Issue 9 — once the speaking phase is done, further next-stage calls
+        // must be rejected (the forward path is submit/reveal → close-room).
+        [$debate, $chair] = $this->makeFullDebate();
+
+        // 6 stages + 1 transition into the result phase.
+        for ($i = 0; $i <= 6; $i++) {
+            $this->actingAs($chair)->postJson("/api/debates/{$debate->id}/next-stage")->assertStatus(200);
+        }
+
+        $debate->refresh();
+        $stageAtCompletion = $debate->current_stage;
+
+        // The 8th call must be rejected and must NOT move the stage marker.
+        $this->actingAs($chair)
+            ->postJson("/api/debates/{$debate->id}/next-stage")
+            ->assertStatus(422);
+
+        $this->assertEquals($stageAtCompletion, $debate->fresh()->current_stage);
+    }
+
     public function test_non_live_debate_cannot_advance(): void
     {
         [$debate, $chair] = $this->makeFullDebate();

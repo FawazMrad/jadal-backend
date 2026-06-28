@@ -92,6 +92,15 @@ class LiveKitController extends Controller
         $isLobby  = $debate->current_stage === 0;
         $isChair  = $p && $p->role === 'judge' && $p->is_chair;
 
+        // NOTE on the 4th flag (canPublishData): EVERY real participant must be
+        // able to publish data-channel messages — that is the transport for the
+        // app's realtime signals (POI raise/answer from a speaker, timer ticks
+        // and lobby/mute control from the chair, team chat). If it is false the
+        // SFU silently drops that participant's data, so the other devices never
+        // see the event (e.g. a debater's POI never reaches the chair, and a
+        // panel judge promoted to chair can't broadcast until they rejoin). Only
+        // pure spectators (viewers) stay data-off.
+
         // Chair gets full control in both lobby and debate mode.
         if ($isChair) {
             return [$roomName, true, true, true, true, true, 'judge_chair'];
@@ -99,18 +108,19 @@ class LiveKitController extends Controller
 
         // Lobby (stage 0): a free-for-all room — everyone may publish & talk.
         if ($isLobby) {
-            return [$roomName, true, true, false, false, false, $this->mainRole($debate, $p)];
+            return [$roomName, true, true, true, false, false, $this->mainRole($debate, $p)];
         }
 
         // Debate mode (stage > 0): permissions by role.
         if ($p && $p->role === 'judge') {
-            return [$roomName, true, true, false, false, false, 'judge_panel'];
+            return [$roomName, true, true, true, false, false, 'judge_panel'];
         }
         if ($p && $p->role === 'debater') {
-            return [$roomName, true, true, false, false, false, 'debater'];
+            return [$roomName, true, true, true, false, false, 'debater'];
         }
         if ($this->isTrainerOfDebateTeam($debate, $p)) {
-            return [$roomName, false, true, false, false, false, 'trainer'];
+            // No audio/video, but may still publish data (e.g. team chat).
+            return [$roomName, false, true, true, false, false, 'trainer'];
         }
 
         // Everyone else (non-participants, viewers): subscribe only.

@@ -37,6 +37,9 @@ class Debate extends Model
         'prep_rooms_opened_at',
         'result_revealed_at',
         'speeches_completed_at',
+        'live_started_at',
+        'timer_is_paused',
+        'timer_paused_elapsed_seconds',
         'prop_speaker_order',
         'opp_speaker_order',
         'cancellation_reason',
@@ -54,9 +57,24 @@ class Debate extends Model
             'prep_rooms_opened_at' => 'datetime',
             'result_revealed_at'  => 'datetime',
             'speeches_completed_at' => 'datetime',
+            'live_started_at'     => 'datetime',
+            'timer_is_paused'     => 'boolean',
+            'timer_paused_elapsed_seconds' => 'integer',
             'prop_speaker_order'  => 'array',
             'opp_speaker_order'   => 'array',
         ];
+    }
+
+    /**
+     * Intro phase (V11 §1): the chair has taken the room live from the open
+     * lobby (live_started_at set) but hasn't started the first speech yet
+     * (current_stage still 0). Chair is in the main card; there is no timer.
+     */
+    public function isInIntro(): bool
+    {
+        return $this->status === 'live'
+            && $this->current_stage === 0
+            && $this->live_started_at !== null;
     }
 
     /**

@@ -109,12 +109,82 @@ class LiveKitWebhookController extends Controller
             ->where('user_id', $userId)
             ->first();
 
+        // Mark as no longer present so attendance-driven logic reflects who is
+        // ACTUALLY in a room. (This also fixes a latent bug: chair election filters
+        // on is_attended, so without clearing it a judge who already left could be
+        // wrongly (re-)elected chair.)
+        if ($participant) {
+            $participant->update(['is_attended' => false]);
+        }
+
         // If the leaver was the chair and the debate is still live (which now
         // includes the whole result phase), re-elect among the remaining judges —
         // whether they left the main room or the result room.
         if ($participant && $participant->is_chair && $debate->status === 'live') {
             $this->electChair($debate, excludeUserId: $userId);
         }
+
+        // V11 §0 — when the last judge leaves the MAIN room during an active
+        // speech, auto-pause the timer. The server owns this because once no judge
+        // is present there is no client authority left to trigger it.
+        if ($roomName === $debate->livekit_room_name) {
+            $this->autoPauseTimerIfNoJudge($debate->fresh());
+        }
+    }
+
+    /**
+     * Pause the server-authoritative timer when no judge remains attended during
+     * an active speech. Idempotent; stays paused until the chair resumes. During
+     * an active speech the result room isn't open yet, so an attended judge is
+     * necessarily one in the main room.
+     */
+    private function autoPauseTimerIfNoJudge(?Debate $debate): void
+    {
+        if (! $debate || $debate->status !== 'live') {
+            return;
+        }
+        if ($debate->current_stage < 1 || $debate->isInResultPhase() || $debate->timer_is_paused) {
+            return;
+        }
+
+        $judgePresent = DebateParticipant::where('debate_id', $debate->id)
+            ->where('role', 'judge')
+            ->where('status', 'approved')
+            ->where('is_attended', true)
+            ->exists();
+
+        if ($judgePresent) {
+            return;
+        }
+
+        $phase = DebatePhase::where('debate_id', $debate->id)
+            ->where('order_index', $debate->current_stage)
+            ->first();
+
+        if (! $phase || $phase->started_at === null) {
+            return;
+        }
+
+        $elapsed = max(0, now()->getTimestamp() - $phase->started_at->getTimestamp());
+        $debate->update([
+            'timer_is_paused'              => true,
+            'timer_paused_elapsed_seconds' => $elapsed,
+        ]);
+
+        try {
+            $this->liveKit->sendDataToRoom(
+                $debate->livekit_room_name,
+                [
+                    'event'                        => 'timer_update',
+                    'current_stage'                => $debate->current_stage,
+                    'current_stage_started_at'     => $phase->started_at?->toIso8601String(),
+                    'timer_is_paused'              => true,
+                    'timer_paused_elapsed_seconds' => $elapsed,
+                    'server_now'                   => now()->toIso8601String(),
+                    'reason'                       => 'no_judge_present',
+                ]
+            );
+        } catch (\Throwable) {}
     }
 
     private function onEgressEnded(array $payload): void

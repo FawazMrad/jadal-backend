@@ -46,6 +46,16 @@ class LiveStateResource extends JsonResource
                 // STILL `live`, this is the canonical "speeches done / result room
                 // open" signal — drive the result-room UI off this, NOT off status.
                 'speeches_completed_at' => $debate->speeches_completed_at?->toIso8601String(),
+                // V11 §1 — intro phase marker (live, chair welcome, pre-speech).
+                'live_started_at'       => $debate->live_started_at?->toIso8601String(),
+                // V11 §0 — server-authoritative timer. Clients compute:
+                //   elapsed = timer_is_paused
+                //           ? timer_paused_elapsed_seconds
+                //           : (clientNow + (server_now - clientNow)) - current_stage_started_at
+                // `server_now` is the server clock at response time, for the offset.
+                'server_now'            => now()->toIso8601String(),
+                'timer_is_paused'       => (bool) $debate->timer_is_paused,
+                'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
             ],
 
             'format' => $format ? [

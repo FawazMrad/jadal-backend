@@ -214,6 +214,8 @@ class LiveDebateController extends Controller
                     'speeches_completed_at' => now(),
                     'ended_at'              => now(),   // end of the speaking portion
                     'current_stage'         => $nextStage, // > total = "past last speech" marker
+                    'timer_is_paused'       => false,
+                    'timer_paused_elapsed_seconds' => 0,
                 ]);
 
                 // Open the result room (judges-only — see LiveKitController).
@@ -264,7 +266,12 @@ class LiveDebateController extends Controller
                 'egress_id'      => $egressId,
             ]);
 
-            $debate->update(['current_stage' => $nextStage]);
+            // A fresh speech starts running from 0 — clear any paused timer state.
+            $debate->update([
+                'current_stage'                => $nextStage,
+                'timer_is_paused'              => false,
+                'timer_paused_elapsed_seconds' => 0,
+            ]);
 
             // Broadcast stage change.
             try {
@@ -311,6 +318,144 @@ class LiveDebateController extends Controller
             new LiveStateResource($result, $myParticipant),
             'تم تقديم المرحلة. | Stage advanced.'
         );
+    }
+
+    // ── V11 §1: POST /debates/{debate}/start-live ─────────────────────────────
+
+    /**
+     * Chair takes the room live from the open lobby — the INTRO phase: still
+     * current_stage 0, no speech/timer yet, chair is the main card (welcome).
+     * The first next-stage after this starts P1. Idempotent.
+     */
+    public function startLive(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $this->findChair($debate, $user->id)) {
+            return $this->error('فقط قاضي الرئاسة يمكنه بدء الجلسة المباشرة. | Only the chair judge can start the live session.', [], 403);
+        }
+
+        if ($debate->status !== 'live') {
+            return $this->error('النقاش ليس في حالة live. | Debate is not live.', [], 422);
+        }
+
+        // Only meaningful from the open lobby, before any speech has started.
+        if ($debate->current_stage !== 0) {
+            return $this->error('بدأت المراحل بالفعل. | The debate has already started.', [], 422);
+        }
+
+        if ($debate->live_started_at === null) {
+            $debate->update(['live_started_at' => now()]);
+
+            // Same event the FE uses to switch into the live layout (idempotent
+            // with the one next-stage broadcasts when P1 begins).
+            try {
+                $this->liveKit->sendDataToRoom(
+                    $debate->livekit_room_name,
+                    ['event' => 'debate_mode_started']
+                );
+            } catch (\Throwable) {}
+        }
+
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم بدء الجلسة المباشرة. | Live session started.'
+        );
+    }
+
+    // ── V11 §0: POST /debates/{debate}/timer ──────────────────────────────────
+
+    /**
+     * Server-authoritative timer control (chair only). `pause` freezes the
+     * elapsed and broadcasts it; `resume` rebases the active phase start so the
+     * clock continues from where it stopped. The frozen state is persisted, so a
+     * rejoin / open-lobby break restores the exact time instead of restarting at 0.
+     */
+    public function timer(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $this->findChair($debate, $user->id)) {
+            return $this->error('فقط قاضي الرئاسة يمكنه التحكم بالمؤقت. | Only the chair judge can control the timer.', [], 403);
+        }
+
+        if ($debate->status !== 'live' || $debate->current_stage < 1) {
+            return $this->error('لا توجد مرحلة نشطة للمؤقت. | There is no active speech to time.', [], 422);
+        }
+
+        $validated = $request->validate([
+            'action' => ['required', 'string', 'in:pause,resume'],
+        ]);
+
+        $phase = DebatePhase::where('debate_id', $debate->id)
+            ->where('order_index', $debate->current_stage)
+            ->first();
+
+        if (! $phase || $phase->started_at === null) {
+            return $this->error('لا توجد مرحلة نشطة للمؤقت. | There is no active speech to time.', [], 422);
+        }
+
+        if ($validated['action'] === 'pause') {
+            if (! $debate->timer_is_paused) {
+                $elapsed = max(0, now()->getTimestamp() - $phase->started_at->getTimestamp());
+                $debate->update([
+                    'timer_is_paused'              => true,
+                    'timer_paused_elapsed_seconds' => $elapsed,
+                ]);
+            }
+        } else { // resume — continue from the frozen elapsed
+            if ($debate->timer_is_paused) {
+                $phase->update(['started_at' => now()->subSeconds((int) $debate->timer_paused_elapsed_seconds)]);
+                $debate->update([
+                    'timer_is_paused'              => false,
+                    'timer_paused_elapsed_seconds' => 0,
+                ]);
+            }
+        }
+
+        $debate->refresh();
+        $phase->refresh();
+        $this->broadcastTimer($debate, $phase);
+
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        return $this->success(
+            new LiveStateResource($debate, $myParticipant),
+            'تم تحديث المؤقت. | Timer updated.'
+        );
+    }
+
+    /** Broadcast the authoritative timer state to the main room. */
+    private function broadcastTimer(Debate $debate, DebatePhase $phase): void
+    {
+        try {
+            $this->liveKit->sendDataToRoom(
+                $debate->livekit_room_name,
+                [
+                    'event'                        => 'timer_update',
+                    'current_stage'                => $debate->current_stage,
+                    'current_stage_started_at'     => $phase->started_at?->toIso8601String(),
+                    'timer_is_paused'              => (bool) $debate->timer_is_paused,
+                    'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
+                    'server_now'                   => now()->toIso8601String(),
+                ]
+            );
+        } catch (\Throwable) {}
+    }
+
+    /** The requesting user's chair participant row, or null. */
+    private function findChair(Debate $debate, int $userId): ?DebateParticipant
+    {
+        return DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $userId)
+            ->where('role', 'judge')
+            ->where('is_chair', true)
+            ->where('status', 'approved')
+            ->first();
     }
 
     // ── F5: POST /debates/{debate}/stages/{stage}/poi ─────────────────────────

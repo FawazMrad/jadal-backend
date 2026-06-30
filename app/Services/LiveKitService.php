@@ -280,8 +280,25 @@ class LiveKitService
         return $info->getEgressId();
     }
 
+    /**
+     * Stop an active egress. Stopping one that already reached a terminal state
+     * (failed / complete / aborted) or was already cleaned up is a NO-OP, not an
+     * error — those benign cases are swallowed so a chair mashing next-stage, or
+     * a recording that already ended, doesn't spam ERROR logs. Genuine problems
+     * (timeouts, auth, connectivity) are re-thrown for the caller to log.
+     */
     public function stopEgress(string $egressId): void
     {
-        $this->egressServiceClient()->stopEgress($egressId);
+        try {
+            $this->egressServiceClient()->stopEgress($egressId);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            $alreadyTerminal = str_contains($msg, 'not found')
+                || str_contains($msg, 'cannot be stopped');
+
+            if (! $alreadyTerminal) {
+                throw $e; // real failure (e.g. "request timed out") — surface it
+            }
+        }
     }
 }

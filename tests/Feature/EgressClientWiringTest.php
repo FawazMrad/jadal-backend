@@ -60,4 +60,39 @@ class EgressClientWiringTest extends TestCase
         // Reaching here without an exception means the SDK path was invoked.
         $this->assertTrue(true);
     }
+
+    public function test_stop_egress_swallows_already_terminal_errors(): void
+    {
+        $benign = [
+            'twirp error unknown: egress not found',
+            'egress with status EGRESS_FAILED cannot be stopped',
+        ];
+
+        foreach ($benign as $message) {
+            $egress = Mockery::mock(EgressServiceClient::class);
+            $egress->shouldReceive('stopEgress')->once()->andThrow(new \RuntimeException($message));
+
+            $svc = Mockery::mock(LiveKitService::class)->makePartial();
+            $svc->shouldAllowMockingProtectedMethods();
+            $svc->shouldReceive('egressServiceClient')->andReturn($egress);
+
+            $svc->stopEgress('EG_dead'); // must NOT throw for an already-terminal egress
+        }
+
+        $this->assertTrue(true);
+    }
+
+    public function test_stop_egress_rethrows_real_errors(): void
+    {
+        $egress = Mockery::mock(EgressServiceClient::class);
+        $egress->shouldReceive('stopEgress')->once()
+            ->andThrow(new \RuntimeException('twirp error unknown: request timed out'));
+
+        $svc = Mockery::mock(LiveKitService::class)->makePartial();
+        $svc->shouldAllowMockingProtectedMethods();
+        $svc->shouldReceive('egressServiceClient')->andReturn($egress);
+
+        $this->expectException(\RuntimeException::class);
+        $svc->stopEgress('EG_x'); // a real failure must still surface
+    }
 }

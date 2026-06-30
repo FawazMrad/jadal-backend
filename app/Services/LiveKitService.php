@@ -273,8 +273,9 @@ class LiveKitService
     private function twirpRequest(string $service, string $method, array $body): array
     {
         $jwt = $this->generateServerJwt();
+        $url = "{$this->host}/twirp/livekit.{$service}/{$method}";
 
-        $ch = curl_init("{$this->host}/twirp/livekit.{$service}/{$method}");
+        $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
@@ -285,12 +286,24 @@ class LiveKitService
             ],
         ]);
 
-        $raw = curl_exec($ch);
-        $err = curl_error($ch);
+        $raw    = curl_exec($ch);
+        $err    = curl_error($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($err) {
-            throw new \RuntimeException("LiveKit Twirp request failed: {$err}");
+        // Transport-level failure (host unreachable, DNS, TLS handshake, …).
+        if ($raw === false || $err !== '') {
+            throw new \RuntimeException("LiveKit Twirp transport error calling {$url}: {$err}");
+        }
+
+        // Twirp reports application errors as a non-2xx HTTP status with a JSON
+        // {code,msg} body. This was previously ignored — so a 404 (wrong service
+        // path) or 400 (bad request) came back silently and the caller stored an
+        // empty egress id with NO exception, which is exactly why every failed
+        // egress left zero trace. Surface non-2xx as a throw so the call sites'
+        // catch+log can observe it.
+        if ($status < 200 || $status >= 300) {
+            throw new \RuntimeException("LiveKit Twirp {$service}/{$method} returned HTTP {$status}: {$raw}");
         }
 
         return json_decode($raw, true) ?? [];

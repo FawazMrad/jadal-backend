@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class LiveDebateController extends Controller
 {
@@ -195,8 +196,16 @@ class LiveDebateController extends Controller
                     if ($currentPhase->egress_id) {
                         try {
                             app(LiveKitService::class)->stopEgress($currentPhase->egress_id);
-                        } catch (\Throwable) {
-                            // Non-fatal — egress may have already ended.
+                        } catch (\Throwable $e) {
+                            // Non-fatal — egress may have already ended — but make it observable.
+                            Log::error('Stop egress failed', [
+                                'debate_id' => $debate->id,
+                                'stage'     => $debate->current_stage,
+                                'egress_id' => $currentPhase->egress_id,
+                                'room'      => $debate->livekit_room_name,
+                                'exception' => $e->getMessage(),
+                                'trace'     => $e->getTraceAsString(),
+                            ]);
                         }
                     }
                 }
@@ -254,8 +263,16 @@ class LiveDebateController extends Controller
                         $debate->id,
                         $nextStage
                     );
-                } catch (\Throwable) {
-                    // Non-fatal — egress is best-effort.
+                } catch (\Throwable $e) {
+                    // Non-fatal — egress is best-effort — but make it observable.
+                    Log::error('Track egress failed to start', [
+                        'debate_id'  => $debate->id,
+                        'stage'      => $nextStage,
+                        'speaker_id' => $speakerParticipant->user_id,
+                        'room'       => $debate->livekit_room_name,
+                        'exception'  => $e->getMessage(),
+                        'trace'      => $e->getTraceAsString(),
+                    ]);
                 }
             }
 
@@ -677,8 +694,16 @@ class LiveDebateController extends Controller
                 if ($activePhase->egress_id) {
                     try {
                         $this->liveKit->stopEgress($activePhase->egress_id);
-                    } catch (\Throwable) {
-                        // Non-fatal — egress may have already ended.
+                    } catch (\Throwable $e) {
+                        // Non-fatal — egress may have already ended — but make it observable.
+                        Log::error('Stop egress failed', [
+                            'debate_id' => $debate->id,
+                            'stage'     => $debate->current_stage,
+                            'egress_id' => $activePhase->egress_id,
+                            'room'      => $debate->livekit_room_name,
+                            'exception' => $e->getMessage(),
+                            'trace'     => $e->getTraceAsString(),
+                        ]);
                     }
                 }
 

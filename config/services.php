@@ -40,7 +40,10 @@ return [
         'host'   => env('LIVEKIT_HOST', 'http://localhost:7880'),    // http(s):// — used by backend
         'key'    => env('LIVEKIT_API_KEY'),
         'secret' => env('LIVEKIT_API_SECRET'),
-        'egress_output_dir' => env('LIVEKIT_EGRESS_OUTPUT_DIR', '/var/recordings'),
+        // Path INSIDE the egress container, not the host. The egress container
+        // mounts host /var/recordings at /out, so files must be written to /out
+        // (writing to /var/recordings inside the container → permission denied).
+        'egress_output_dir' => env('LIVEKIT_EGRESS_OUTPUT_DIR', '/out'),
     ],
 
 ];

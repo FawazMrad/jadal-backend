@@ -30,7 +30,7 @@ class EgressClientWiringTest extends TestCase
                     && $identity === '26'
                     && $output instanceof EncodedOutputs
                     && $output->getFile() !== null
-                    && $output->getFile()->getFilepath() === '/var/recordings/103/stage-2-26.mp4';
+                    && $output->getFile()->getFilepath() === '/out/103/stage-2-26.mp4';
             })
             ->andReturn((new EgressInfo())->setEgressId('EG_abc123'));
 

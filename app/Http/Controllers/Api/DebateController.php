@@ -11,7 +11,9 @@ use App\Http\Resources\DebateDetailResource;
 use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
 use App\Http\Resources\DebateResultResource;
+use App\Http\Resources\PublicUserResource;
 use App\Models\Debate;
+use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
 use App\Models\DebateResult;
 use App\Models\Feedbacks;
@@ -267,6 +269,121 @@ class DebateController extends Controller
         return DebateParticipant::where('debate_id', $debate->id)
             ->where('user_id', $userId)
             ->exists();
+    }
+
+    /**
+     * V12 §1: GET /debates/{debate}/registerable-teams
+     *
+     * The teams the caller may register for THIS debate — the teams they lead or
+     * coach (created_by). A leader usually owns 1; a trainer may own several. Each
+     * row carries an eligibility flag + reason so the FE can disable bad picks.
+     */
+    public function registerableTeams(Request $request, Debate $debate): JsonResponse
+    {
+        $user = $request->user();
+
+        // Teams the caller leads or coaches that can actually play (active, not random).
+        $teams = Team::where('status', 'active')
+            ->where('is_random', false)
+            ->where(fn ($q) => $q->where('leader_id', $user->id)->orWhere('created_by', $user->id))
+            ->get();
+
+        // Team ids that already have any registration row on this debate.
+        $registeredTeamIds = DebateParticipant::where('debate_id', $debate->id)
+            ->whereNotNull('team_id')
+            ->pluck('team_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->all();
+
+        // The team the caller themselves already registered for this debate (if any).
+        $alreadyRegisteredTeamId = DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $user->id)
+            ->whereNotNull('team_id')
+            ->value('team_id');
+
+        $registrationOpen = $debate->status === 'scheduled';
+
+        $rows = $teams->map(function (Team $team) use ($registeredTeamIds, $registrationOpen) {
+            $membersCount = TeamMember::where('team_id', $team->id)
+                ->where('status', 'current')
+                ->count();
+
+            $reason = match (true) {
+                ! $registrationOpen                              => 'registration_closed',
+                in_array((int) $team->id, $registeredTeamIds, true) => 'already_registered',
+                $membersCount < DebateFormat::SPEAKERS_PER_SIDE  => 'too_few_members',
+                default                                          => null,
+            };
+
+            return [
+                'id'                => (int) $team->id,
+                'name'              => $team->name,
+                'members_count'     => $membersCount,
+                'eligible'          => $reason === null,
+                'ineligible_reason' => $reason,
+            ];
+        })->values()->all();
+
+        return $this->success([
+            'debate_id'                  => (int) $debate->id,
+            'already_registered_team_id' => $alreadyRegisteredTeamId !== null ? (int) $alreadyRegisteredTeamId : null,
+            'teams'                      => $rows,
+        ], 'تم جلب الفرق القابلة للتسجيل. | Registerable teams retrieved.');
+    }
+
+    /**
+     * V12 §3: GET /debates/{debate}/registrations
+     *
+     * Who has registered for this debate, split into teams / judges / solo
+     * applicants — drives the three "registered" dialogs on the registration
+     * screen. Derived from the debate_participants rows registration creates.
+     */
+    public function registrations(Debate $debate): JsonResponse
+    {
+        $rows = DebateParticipant::where('debate_id', $debate->id)->with('user')->get();
+
+        // Teams = rows that carry a team_id, grouped. members_count counts debaters.
+        $teams = $rows->filter(fn ($r) => $r->team_id !== null)
+            ->groupBy('team_id')
+            ->map(function ($group, $teamId) {
+                $team = Team::find($teamId);
+
+                return [
+                    'team' => [
+                        'id'   => (int) $teamId,
+                        'name' => $team?->name,
+                    ],
+                    'members_count' => $group->where('role', 'debater')->count(),
+                    'registered_at' => $group->min('created_at')?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $judges = $rows->where('role', 'judge')->values()
+            ->map(fn ($r) => $this->registrantRow($r))
+            ->all();
+
+        // Solo = individual debater applicants (no team).
+        $solo = $rows->where('role', 'debater')->whereNull('team_id')->values()
+            ->map(fn ($r) => $this->registrantRow($r))
+            ->all();
+
+        return $this->success([
+            'teams'  => $teams,
+            'judges' => $judges,
+            'solo'   => $solo,
+        ], 'تم جلب المسجّلين. | Registrants retrieved.');
+    }
+
+    /** @return array{user: PublicUserResource|null, registered_at: string|null} */
+    private function registrantRow(DebateParticipant $r): array
+    {
+        return [
+            'user'          => $r->relationLoaded('user') && $r->user ? new PublicUserResource($r->user) : null,
+            'registered_at' => $r->created_at?->toIso8601String(),
+        ];
     }
 
     /**

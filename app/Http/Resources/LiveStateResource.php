@@ -229,6 +229,13 @@ class LiveStateResource extends JsonResource
             ->where('status', 'approved')
             ->values();
 
+        // Announced (pre-sides): no approved sided debaters yet — show the team
+        // occupying this slot NEUTRALLY (full roster, no speakers/order). This is
+        // also the graceful empty shape before any sided roster exists.
+        if ($participants->isEmpty()) {
+            return $this->buildNeutralSlot($debate, $side);
+        }
+
         $firstTeamId = $participants->first()?->team_id;
         $team        = null;
         $isRandom    = false;
@@ -269,6 +276,35 @@ class LiveStateResource extends JsonResource
             ),
             'speakers'       => DebateParticipantResource::collection($speakers),
             'speaking_order' => $speakingOrder,
+        ];
+    }
+
+    /**
+     * Neutral, pre-sides view of a side: the team in this slot
+     * (proposition_team_id / opposition_team_id) with its full current roster but
+     * no speakers/order. The FE renders these as "First/Second team" while the
+     * debate is announced; they only carry prop/opp meaning from teams-selected on.
+     */
+    private function buildNeutralSlot(Debate $debate, string $side): array
+    {
+        $slotTeamId = $side === 'proposition'
+            ? $debate->proposition_team_id
+            : $debate->opposition_team_id;
+
+        $teamModel = $slotTeamId
+            ? \App\Models\Team::with(['members' => fn ($q) => $q->wherePivot('status', 'current')])->find($slotTeamId)
+            : null;
+
+        $members = $teamModel
+            ? $teamModel->members->sortBy(fn ($u) => $u->pivot->priority)->values()
+            : collect();
+
+        return [
+            'team'           => $teamModel ? new \App\Http\Resources\TeamResource($teamModel) : null,
+            'is_random'      => (bool) $teamModel?->is_random,
+            'members'        => PublicUserResource::collection($members),
+            'speakers'       => [],
+            'speaking_order' => [],
         ];
     }
 

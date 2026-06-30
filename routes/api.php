@@ -124,6 +124,8 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     Route::prefix('debates')->name('debates.')->group(function (): void {
         Route::get('/',                       [DebateController::class, 'index'])              ->name('index');
         Route::get('/{debate}',               [DebateController::class, 'show'])               ->name('show');
+        Route::get('/{debate}/registerable-teams', [DebateController::class, 'registerableTeams'])->name('registerable-teams');
+        Route::get('/{debate}/registrations', [DebateController::class, 'registrations'])        ->name('registrations');
         Route::post('/{debate}/register',     [DebateController::class, 'register'])           ->name('register');
         Route::post('/{debate}/team-roster',  [DebateController::class, 'teamRoster'])         ->name('team-roster');
         Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])          ->name('token');
@@ -290,6 +292,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::post('/{debate}/teams',
                 [AdminDebateController::class, 'linkTeams'])
                 ->name('teams.link');
+
+            Route::post('/{debate}/announce',
+                [AdminDebateController::class, 'announce'])
+                ->name('announce');
 
             Route::get('/{debate}/teams/{team}/pending-participants',
                 [AdminDebateController::class, 'pendingParticipants'])

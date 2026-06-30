@@ -13,8 +13,10 @@ use App\Http\Resources\DebateDetailResource;
 use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
 use App\Models\Debate;
+use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
 use App\Models\Team;
+use App\Models\TeamMember;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -163,6 +165,136 @@ class AdminDebateController extends Controller
             'proposition_team_id' => $propId,
             'opposition_team_id'  => $oppId,
         ], 'تم ربط الفرق بالنقاش. | Teams linked to debate sides.');
+    }
+
+    /**
+     * V12 §2: POST /admin/debates/{debate}/announce
+     *
+     * The admin selects the line-up: ≥1 judge and the TWO teams that will debate —
+     * each team being either an existing team (`team_id`) or a "random" team (a
+     * collection of solo applicants, `user_ids`, which we materialise into an
+     * is_random team). Sides (prop/opp) and speaker order are NOT chosen here.
+     * On success the debate flips scheduled → announced. The later
+     * announced → teams-selected transition is driven by the time offset
+     * (AdvanceDebatesLifecycle) once both sides have an approved roster.
+     */
+    public function announce(Request $request, Debate $debate): JsonResponse
+    {
+        $validated = $request->validate([
+            'judges'             => ['required', 'array', 'min:1'],
+            'judges.*'           => ['integer', 'distinct', 'exists:users,id'],
+            'teams'              => ['required', 'array', 'size:2'],
+            'teams.*.team_id'    => ['nullable', 'integer', 'exists:teams,id'],
+            'teams.*.user_ids'   => ['nullable', 'array', 'min:' . DebateFormat::SPEAKERS_PER_SIDE],
+            'teams.*.user_ids.*' => ['integer', 'distinct', 'exists:users,id'],
+        ]);
+
+        if ($debate->status !== 'scheduled') {
+            return $this->error('يمكن إعلان النقاشات المجدولة فقط. | Only scheduled debates can be announced.', [], 422);
+        }
+
+        // Each team entry must be EXACTLY one of team_id | user_ids.
+        foreach ($validated['teams'] as $i => $t) {
+            if (! empty($t['team_id']) === ! empty($t['user_ids'])) {
+                return $this->error(
+                    'كل فريق يجب أن يكون فريقاً موجوداً أو مجموعة لاعبين، وليس كليهما. | Each team must be exactly one of team_id or user_ids.',
+                    [], 422
+                );
+            }
+            // Existing teams must be able to field a full line-up.
+            if (! empty($t['team_id'])) {
+                $count = TeamMember::where('team_id', $t['team_id'])->where('status', 'current')->count();
+                if ($count < DebateFormat::SPEAKERS_PER_SIDE) {
+                    return $this->error(
+                        "الفريق رقم " . ($i + 1) . " لا يملك عدداً كافياً من الأعضاء. | Team " . ($i + 1) . " has too few members.",
+                        [], 422
+                    );
+                }
+            }
+        }
+
+        DB::transaction(function () use ($validated, $debate, $request) {
+            // 1) Resolve each entry to a concrete team_id (creating random teams).
+            $teamIds = [];
+            foreach ($validated['teams'] as $t) {
+                $teamIds[] = ! empty($t['team_id'])
+                    ? (int) $t['team_id']
+                    : $this->materialiseRandomTeam($t['user_ids'], (int) $request->user()->id);
+            }
+
+            // 2) Two neutral slots — the FE renders them as first/second team while
+            //    announced; the prop/opp meaning only applies from teams-selected on.
+            $debate->update([
+                'proposition_team_id' => $teamIds[0],
+                'opposition_team_id'  => $teamIds[1],
+            ]);
+
+            // 3) Each team's current members become this debate's debater pool,
+            //    tagged with the team — side stays NULL (assigned later via roster).
+            foreach ($teamIds as $teamId) {
+                $memberIds = TeamMember::where('team_id', $teamId)->where('status', 'current')->pluck('user_id');
+                foreach ($memberIds as $uid) {
+                    DebateParticipant::updateOrCreate(
+                        ['debate_id' => $debate->id, 'user_id' => (int) $uid],
+                        ['team_id' => $teamId, 'role' => 'debater', 'side' => null, 'status' => 'pending', 'is_chair' => false]
+                    );
+                }
+            }
+
+            // 4) Approve the judges, monotonic order, chair = lowest order.
+            $order = 1;
+            foreach ($validated['judges'] as $uid) {
+                DebateParticipant::updateOrCreate(
+                    ['debate_id' => $debate->id, 'user_id' => (int) $uid],
+                    [
+                        'team_id'     => null,
+                        'role'        => 'judge',
+                        'side'        => 'judge',
+                        'status'      => 'approved',
+                        'judge_order' => $order,
+                        'is_chair'    => $order === 1,
+                    ]
+                );
+                $order++;
+            }
+
+            $debate->update(['status' => 'announced']);
+        });
+
+        $debate->load('participants.user');
+
+        return $this->success(
+            new DebateDetailResource($debate->fresh(['format', 'motion', 'createdBy', 'participants.user'])),
+            'تم إعلان النقاش. | Debate announced.'
+        );
+    }
+
+    /**
+     * Materialise a "random" team from a collection of solo applicants into an
+     * is_random team so it can occupy a debate slot like any other team.
+     */
+    private function materialiseRandomTeam(array $userIds, int $adminId): int
+    {
+        $userIds = array_values(array_unique(array_map('intval', $userIds)));
+
+        $team = Team::create([
+            'name'       => 'Lineup ' . Str::upper(Str::random(5)),
+            'leader_id'  => $userIds[0],
+            'created_by' => $adminId,
+            'is_random'  => true,
+            'status'     => 'active',
+        ]);
+
+        foreach ($userIds as $idx => $uid) {
+            TeamMember::create([
+                'team_id'  => $team->id,
+                'user_id'  => $uid,
+                'priority' => $idx + 1,
+                'status'   => 'current',
+            ]);
+        }
+
+        return (int) $team->id;
     }
 
     /**

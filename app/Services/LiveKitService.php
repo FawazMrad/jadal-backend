@@ -4,11 +4,13 @@ namespace App\Services;
 
 use Agence104\LiveKit\AccessToken;
 use Agence104\LiveKit\AccessTokenOptions;
+use Agence104\LiveKit\EgressServiceClient;
 use Agence104\LiveKit\RoomCreateOptions;
 use Agence104\LiveKit\RoomServiceClient;
 use Agence104\LiveKit\VideoGrant;
 use App\Models\Debate;
 use Illuminate\Support\Facades\Log;
+use Livekit\EncodedFileOutput;
 
 /**
  * Two URLs are used:
@@ -43,6 +45,16 @@ class LiveKitService
     protected function roomServiceClient(): RoomServiceClient
     {
         return new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+    }
+
+    /**
+     * Builds the LiveKit Egress service client (Twirp over the http(s) host),
+     * same pattern as the room client. Overridable so tests can assert the
+     * egress calls without a running LiveKit server.
+     */
+    protected function egressServiceClient(): EgressServiceClient
+    {
+        return new EgressServiceClient($this->host, $this->apiKey, $this->apiSecret);
     }
 
     // ── Token generation ──────────────────────────────────────────────────────
@@ -236,10 +248,13 @@ class LiveKitService
     // ── Egress ────────────────────────────────────────────────────────────────
 
     /**
-     * Start a TrackEgress for the active speaker and return the egress ID.
+     * Start a ParticipantEgress recording the active speaker (by identity) to a
+     * file, and return the egress ID.
      *
-     * // TODO: SDK feature — TrackEgress is not yet exposed in the PHP SDK.
-     * // Using the Twirp HTTP endpoint with a signed JWT until SDK support lands.
+     * Routed through the SDK's EgressServiceClient (Twirp call to
+     * /twirp/livekit.Egress/StartParticipantEgress over the http host). The
+     * previous hand-rolled POST to /twirp/livekit.EgressService/StartTrackEgress
+     * used a service name that does not exist, so it 404'd on every call.
      */
     public function startTrackEgressForParticipant(
         string $roomName,
@@ -250,79 +265,16 @@ class LiveKitService
         $outputDir = config('services.livekit.egress_output_dir', '/var/recordings');
         $filePath  = "{$outputDir}/{$debateId}/stage-{$stageOrder}-{$identity}.mp4";
 
-        $body = [
-            'room_name'    => $roomName,
-            'participant'  => ['identity' => $identity],
-            'file_outputs' => [
-                ['file_type' => 1, 'filepath' => $filePath],
-            ],
-        ];
+        // .mp4 filepath → LiveKit encodes an MP4 EncodedFileOutput for it.
+        $output = (new EncodedFileOutput())->setFilepath($filePath);
 
-        $response = $this->twirpRequest('EgressService', 'StartTrackEgress', $body);
+        $info = $this->egressServiceClient()->startParticipantEgress($roomName, $identity, $output);
 
-        return $response['egress_id'] ?? '';
+        return $info->getEgressId();
     }
 
     public function stopEgress(string $egressId): void
     {
-        $this->twirpRequest('EgressService', 'StopEgress', ['egress_id' => $egressId]);
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    private function twirpRequest(string $service, string $method, array $body): array
-    {
-        $jwt = $this->generateServerJwt();
-        $url = "{$this->host}/twirp/livekit.{$service}/{$method}";
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => json_encode($body),
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: application/json',
-                "Authorization: Bearer {$jwt}",
-            ],
-        ]);
-
-        $raw    = curl_exec($ch);
-        $err    = curl_error($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        // Transport-level failure (host unreachable, DNS, TLS handshake, …).
-        if ($raw === false || $err !== '') {
-            throw new \RuntimeException("LiveKit Twirp transport error calling {$url}: {$err}");
-        }
-
-        // Twirp reports application errors as a non-2xx HTTP status with a JSON
-        // {code,msg} body. This was previously ignored — so a 404 (wrong service
-        // path) or 400 (bad request) came back silently and the caller stored an
-        // empty egress id with NO exception, which is exactly why every failed
-        // egress left zero trace. Surface non-2xx as a throw so the call sites'
-        // catch+log can observe it.
-        if ($status < 200 || $status >= 300) {
-            throw new \RuntimeException("LiveKit Twirp {$service}/{$method} returned HTTP {$status}: {$raw}");
-        }
-
-        return json_decode($raw, true) ?? [];
-    }
-
-    private function generateServerJwt(): string
-    {
-        $grant = new VideoGrant();
-        $grant->setRoomCreate(true);
-        $grant->setRoomList(true);
-
-        $tokenOptions = (new AccessTokenOptions())
-            ->setIdentity('server')
-            ->setTtl(60);
-
-        $token = (new AccessToken($this->apiKey, $this->apiSecret))
-            ->init($tokenOptions)
-            ->setGrant($grant);
-
-        return $token->toJwt();
+        $this->egressServiceClient()->stopEgress($egressId);
     }
 }

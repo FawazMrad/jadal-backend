@@ -5,6 +5,7 @@ namespace App\Services;
 use Agence104\LiveKit\AccessToken;
 use Agence104\LiveKit\AccessTokenOptions;
 use Agence104\LiveKit\EgressServiceClient;
+use Agence104\LiveKit\EncodedOutputs;
 use Agence104\LiveKit\RoomCreateOptions;
 use Agence104\LiveKit\RoomServiceClient;
 use Agence104\LiveKit\VideoGrant;
@@ -265,8 +266,14 @@ class LiveKitService
         $outputDir = config('services.livekit.egress_output_dir', '/var/recordings');
         $filePath  = "{$outputDir}/{$debateId}/stage-{$stageOrder}-{$identity}.mp4";
 
-        // .mp4 filepath → LiveKit encodes an MP4 EncodedFileOutput for it.
-        $output = (new EncodedFileOutput())->setFilepath($filePath);
+        // .mp4 filepath → an MP4 EncodedFileOutput. It MUST be wrapped in
+        // EncodedOutputs: handed a bare EncodedFileOutput the SDK sets BOTH
+        // `file_outputs` AND a singular `file`, but ParticipantEgressRequest has
+        // no `file` field → "Invalid message property: file". The wrapper makes
+        // the SDK emit only `file_outputs`.
+        $output = (new EncodedOutputs())->setFile(
+            (new EncodedFileOutput())->setFilepath($filePath)
+        );
 
         $info = $this->egressServiceClient()->startParticipantEgress($roomName, $identity, $output);
 

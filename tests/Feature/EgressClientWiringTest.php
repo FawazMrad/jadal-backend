@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use Agence104\LiveKit\EgressServiceClient;
+use Agence104\LiveKit\EncodedOutputs;
 use App\Services\LiveKitService;
 use Livekit\EgressInfo;
-use Livekit\EncodedFileOutput;
 use Mockery;
 use Tests\TestCase;
 
@@ -24,10 +24,13 @@ class EgressClientWiringTest extends TestCase
         $egress->shouldReceive('startParticipantEgress')
             ->once()
             ->withArgs(function (string $room, string $identity, $output): bool {
+                // Wrapped in EncodedOutputs (file only) so the SDK emits just
+                // file_outputs — never the invalid singular `file`.
                 return $room === 'debate-deb-main'
                     && $identity === '26'
-                    && $output instanceof EncodedFileOutput
-                    && $output->getFilepath() === '/var/recordings/103/stage-2-26.mp4';
+                    && $output instanceof EncodedOutputs
+                    && $output->getFile() !== null
+                    && $output->getFile()->getFilepath() === '/var/recordings/103/stage-2-26.mp4';
             })
             ->andReturn((new EgressInfo())->setEgressId('EG_abc123'));
 

@@ -16,11 +16,15 @@ use App\Services\LiveKitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class LiveDebateController extends Controller
 {
+    /** Seconds a next-stage lock is held before auto-expiring (covers LiveKit HTTP timeout + DB writes). */
+    private const NEXT_STAGE_LOCK_SECONDS = 15;
+
     public function __construct(private LiveKitService $liveKit) {}
 
     // ── F1: GET /debates/{debate}/live-state ──────────────────────────────────
@@ -181,81 +185,74 @@ class LiveDebateController extends Controller
             return $this->error('انتهت مرحلة المتحدثين بالفعل. | The speaking phase is already complete; advancing further is not allowed.', [], 422);
         }
 
-        $result = DB::transaction(function () use ($debate, $user) {
-            $totalStages = $debate->phases()->count();
+        // Guard against a chair mashing next-stage: a second request for the
+        // same debate while one is still in flight (waiting on egress, DB,
+        // etc.) is rejected outright rather than queuing behind a DB row lock
+        // and eventually surfacing as a 500/504. Lock TTL covers the worst
+        // case (LiveKit HTTP timeout + DB writes) with headroom, and
+        // auto-expires so a died request can never wedge the debate.
+        $lock = Cache::lock("live-debate:next-stage:{$debate->id}", self::NEXT_STAGE_LOCK_SECONDS);
 
-            // Close the current active stage.
+        if (! $lock->get()) {
+            return $this->error(
+                'هناك عملية تقديم مرحلة قيد التنفيذ بالفعل. حاول مرة أخرى بعد قليل. | A stage transition is already in progress for this debate.',
+                [],
+                409
+            );
+        }
+
+        try {
+            // ── A. Pre-computation (reads only — no writes, no network calls) ──
+            $totalStages  = $debate->phases()->count();
+            $currentPhase = null;
+
             if ($debate->current_stage > 0) {
                 $currentPhase = DebatePhase::where('debate_id', $debate->id)
                     ->where('order_index', $debate->current_stage)
                     ->first();
+            }
 
-                if ($currentPhase) {
-                    $currentPhase->update(['status' => 'completed', 'ended_at' => now()]);
+            $nextStage         = $debate->current_stage + 1;
+            $isPastLastSpeech  = $nextStage > $totalStages;
+            $nextPhase         = null;
+            $speakerParticipant = null;
 
-                    if ($currentPhase->egress_id) {
-                        try {
-                            app(LiveKitService::class)->stopEgress($currentPhase->egress_id);
-                        } catch (\Throwable $e) {
-                            // Non-fatal — egress may have already ended — but make it observable.
-                            Log::error('Stop egress failed', [
-                                'debate_id' => $debate->id,
-                                'stage'     => $debate->current_stage,
-                                'egress_id' => $currentPhase->egress_id,
-                                'room'      => $debate->livekit_room_name,
-                                'exception' => $e->getMessage(),
-                                'trace'     => $e->getTraceAsString(),
-                            ]);
-                        }
-                    }
+            if (! $isPastLastSpeech) {
+                $nextPhase = DebatePhase::where('debate_id', $debate->id)
+                    ->where('order_index', $nextStage)
+                    ->first();
+
+                if (! $nextPhase) {
+                    throw new \RuntimeException("Phase {$nextStage} not found for debate {$debate->id}.");
+                }
+
+                $speakerParticipant = $this->resolveStageSpeaker($debate, $nextPhase);
+            }
+
+            // ── B. Network calls (best-effort — LiveKit must never hold a DB lock) ──
+            if ($currentPhase && $currentPhase->egress_id) {
+                try {
+                    app(LiveKitService::class)->stopEgress($currentPhase->egress_id);
+                } catch (\Throwable $e) {
+                    // Non-fatal — egress may have already ended — but make it observable.
+                    Log::error('Stop egress failed', [
+                        'debate_id' => $debate->id,
+                        'stage'     => $debate->current_stage,
+                        'egress_id' => $currentPhase->egress_id,
+                        'room'      => $debate->livekit_room_name,
+                        'exception' => $e->getMessage(),
+                        'trace'     => $e->getTraceAsString(),
+                    ]);
                 }
             }
 
-            $nextStage = $debate->current_stage + 1;
-
-            // Past the last speech → the SPEAKING phase is done, but the debate is
-            // NOT over. Status stays `live` (the "result phase"): the main room
-            // stays open for rejoining, the result room opens for judges to
-            // deliberate, and the chair submits + reveals a result. Only close-room
-            // finalises the debate (→ completed/cancelled). We do NOT set completed here.
-            if ($nextStage > $totalStages) {
-                $debate->update([
-                    'speeches_completed_at' => now(),
-                    'ended_at'              => now(),   // end of the speaking portion
-                    'current_stage'         => $nextStage, // > total = "past last speech" marker
-                    'timer_is_paused'       => false,
-                    'timer_paused_elapsed_seconds' => 0,
-                ]);
-
+            if ($isPastLastSpeech) {
                 // Open the result room (judges-only — see LiveKitController).
                 app(LiveKitService::class)->createRoomIfMissing($debate->result_room_name);
-
-                // Tell the main room the speeches are done / result phase is open.
-                // Status is STILL `live` — clients must not treat this as "finished".
-                try {
-                    app(LiveKitService::class)->sendDataToRoom(
-                        $debate->livekit_room_name,
-                        ['event' => 'speeches_completed', 'result_room' => $debate->result_room_name]
-                    );
-                } catch (\Throwable) {}
-
-                return $debate->fresh();
             }
-
-            // Advance to the next stage.
-            $nextPhase = DebatePhase::where('debate_id', $debate->id)
-                ->where('order_index', $nextStage)
-                ->first();
-
-            if (! $nextPhase) {
-                throw new \RuntimeException("Phase {$nextStage} not found for debate {$debate->id}.");
-            }
-
-            // Resolve the expected speaker for this stage.
-            $speakerParticipant = $this->resolveStageSpeaker($debate, $nextPhase);
 
             $egressId = null;
-            if ($speakerParticipant) {
+            if (! $isPastLastSpeech && $speakerParticipant) {
                 try {
                     $egressId = app(LiveKitService::class)->startTrackEgressForParticipant(
                         $debate->livekit_room_name,
@@ -276,57 +273,96 @@ class LiveDebateController extends Controller
                 }
             }
 
-            $nextPhase->update([
-                'status'         => 'active',
-                'started_at'     => now(),
-                'participant_id' => $speakerParticipant?->id,
-                'egress_id'      => $egressId,
-            ]);
+            // ── C. DB transaction — writes only, no network calls inside ────────
+            $result = DB::transaction(function () use ($debate, $currentPhase, $isPastLastSpeech, $nextStage, $nextPhase, $speakerParticipant, $egressId) {
+                if ($currentPhase) {
+                    $currentPhase->update(['status' => 'completed', 'ended_at' => now()]);
+                }
 
-            // A fresh speech starts running from 0 — clear any paused timer state.
-            $debate->update([
-                'current_stage'                => $nextStage,
-                'timer_is_paused'              => false,
-                'timer_paused_elapsed_seconds' => 0,
-            ]);
+                // Past the last speech → the SPEAKING phase is done, but the debate is
+                // NOT over. Status stays `live` (the "result phase"): the main room
+                // stays open for rejoining, the result room opens for judges to
+                // deliberate, and the chair submits + reveals a result. Only close-room
+                // finalises the debate (→ completed/cancelled). We do NOT set completed here.
+                if ($isPastLastSpeech) {
+                    $debate->update([
+                        'speeches_completed_at' => now(),
+                        'ended_at'              => now(),   // end of the speaking portion
+                        'current_stage'         => $nextStage, // > total = "past last speech" marker
+                        'timer_is_paused'       => false,
+                        'timer_paused_elapsed_seconds' => 0,
+                    ]);
 
-            // Broadcast stage change.
-            try {
-                app(LiveKitService::class)->sendDataToRoom(
-                    $debate->livekit_room_name,
-                    [
-                        'event'            => 'stage_changed',
-                        'current_stage'    => $nextStage,
-                        'speaker_user_id'  => $speakerParticipant?->user_id,
-                        'duration_seconds' => $nextPhase->duration_seconds,
-                        'server_started_at' => now()->toIso8601String(),
-                    ]
-                );
-            } catch (\Throwable) {}
+                    return $debate->fresh();
+                }
 
-            // First transition out of the lobby (stage 0 → 1): close prep rooms on
-            // LiveKit and signal the frontend to switch into debate mode.
-            if ($nextStage === 1) {
-                try {
-                    $svc = app(LiveKitService::class);
-                    if ($debate->prop_room_name) {
-                        $svc->deleteRoomIfExists($debate->prop_room_name);
-                    }
-                    if ($debate->opp_room_name) {
-                        $svc->deleteRoomIfExists($debate->opp_room_name);
-                    }
-                } catch (\Throwable) {}
+                // Advance to the next stage.
+                $nextPhase->update([
+                    'status'         => 'active',
+                    'started_at'     => now(),
+                    'participant_id' => $speakerParticipant?->id,
+                    'egress_id'      => $egressId,
+                ]);
 
+                // A fresh speech starts running from 0 — clear any paused timer state.
+                $debate->update([
+                    'current_stage'                => $nextStage,
+                    'timer_is_paused'              => false,
+                    'timer_paused_elapsed_seconds' => 0,
+                ]);
+
+                return $debate->fresh();
+            });
+
+            // ── D. Post-commit broadcasts (best-effort, unchanged semantics) ────
+            if ($isPastLastSpeech) {
+                // Tell the main room the speeches are done / result phase is open.
+                // Status is STILL `live` — clients must not treat this as "finished".
                 try {
                     app(LiveKitService::class)->sendDataToRoom(
                         $debate->livekit_room_name,
-                        ['event' => 'debate_mode_started']
+                        ['event' => 'speeches_completed', 'result_room' => $debate->result_room_name]
                     );
                 } catch (\Throwable) {}
-            }
+            } else {
+                // Broadcast stage change.
+                try {
+                    app(LiveKitService::class)->sendDataToRoom(
+                        $debate->livekit_room_name,
+                        [
+                            'event'            => 'stage_changed',
+                            'current_stage'    => $nextStage,
+                            'speaker_user_id'  => $speakerParticipant?->user_id,
+                            'duration_seconds' => $nextPhase->duration_seconds,
+                            'server_started_at' => now()->toIso8601String(),
+                        ]
+                    );
+                } catch (\Throwable) {}
 
-            return $debate->fresh();
-        });
+                // First transition out of the lobby (stage 0 → 1): close prep rooms on
+                // LiveKit and signal the frontend to switch into debate mode.
+                if ($nextStage === 1) {
+                    try {
+                        $svc = app(LiveKitService::class);
+                        if ($debate->prop_room_name) {
+                            $svc->deleteRoomIfExists($debate->prop_room_name);
+                        }
+                        if ($debate->opp_room_name) {
+                            $svc->deleteRoomIfExists($debate->opp_room_name);
+                        }
+                    } catch (\Throwable) {}
+
+                    try {
+                        app(LiveKitService::class)->sendDataToRoom(
+                            $debate->livekit_room_name,
+                            ['event' => 'debate_mode_started']
+                        );
+                    } catch (\Throwable) {}
+                }
+            }
+        } finally {
+            $lock->release();
+        }
 
         $result->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
         $myParticipant = $result->participants->firstWhere('user_id', $user->id);
@@ -684,29 +720,31 @@ class LiveDebateController extends Controller
             return $this->error('لا يمكن العودة إلى اللوبي إلا أثناء النقاش. | Can only roll back to the lobby during a live debate.', [], 422);
         }
 
-        DB::transaction(function () use ($debate) {
-            // Reset the currently active phase back to pending.
-            $activePhase = DebatePhase::where('debate_id', $debate->id)
-                ->where('order_index', $debate->current_stage)
-                ->first();
+        // ── Pre-computation (read only) ─────────────────────────────────────────
+        $activePhase = DebatePhase::where('debate_id', $debate->id)
+            ->where('order_index', $debate->current_stage)
+            ->first();
 
+        // ── Network call (best-effort — must not hold a DB lock) ───────────────
+        if ($activePhase && $activePhase->egress_id) {
+            try {
+                $this->liveKit->stopEgress($activePhase->egress_id);
+            } catch (\Throwable $e) {
+                // Non-fatal — egress may have already ended — but make it observable.
+                Log::error('Stop egress failed', [
+                    'debate_id' => $debate->id,
+                    'stage'     => $debate->current_stage,
+                    'egress_id' => $activePhase->egress_id,
+                    'room'      => $debate->livekit_room_name,
+                    'exception' => $e->getMessage(),
+                    'trace'     => $e->getTraceAsString(),
+                ]);
+            }
+        }
+
+        // ── DB transaction — writes only, no network calls inside ──────────────
+        DB::transaction(function () use ($debate, $activePhase) {
             if ($activePhase) {
-                if ($activePhase->egress_id) {
-                    try {
-                        $this->liveKit->stopEgress($activePhase->egress_id);
-                    } catch (\Throwable $e) {
-                        // Non-fatal — egress may have already ended — but make it observable.
-                        Log::error('Stop egress failed', [
-                            'debate_id' => $debate->id,
-                            'stage'     => $debate->current_stage,
-                            'egress_id' => $activePhase->egress_id,
-                            'room'      => $debate->livekit_room_name,
-                            'exception' => $e->getMessage(),
-                            'trace'     => $e->getTraceAsString(),
-                        ]);
-                    }
-                }
-
                 $activePhase->update([
                     'status'         => 'pending',
                     'started_at'     => null,
@@ -717,25 +755,26 @@ class LiveDebateController extends Controller
             }
 
             $debate->update(['current_stage' => 0]);
-
-            // Re-open the prep rooms that were closed when the debate started.
-            try {
-                if ($debate->prop_room_name) {
-                    $this->liveKit->createRoomIfMissing($debate->prop_room_name);
-                }
-                if ($debate->opp_room_name) {
-                    $this->liveKit->createRoomIfMissing($debate->opp_room_name);
-                }
-            } catch (\Throwable) {}
-
-            // Tell the frontend to drop back to lobby UI.
-            try {
-                $this->liveKit->sendDataToRoom(
-                    $debate->livekit_room_name,
-                    ['event' => 'returned_to_lobby']
-                );
-            } catch (\Throwable) {}
         });
+
+        // ── Post-commit (best-effort, unchanged semantics) ──────────────────────
+        // Re-open the prep rooms that were closed when the debate started.
+        try {
+            if ($debate->prop_room_name) {
+                $this->liveKit->createRoomIfMissing($debate->prop_room_name);
+            }
+            if ($debate->opp_room_name) {
+                $this->liveKit->createRoomIfMissing($debate->opp_room_name);
+            }
+        } catch (\Throwable) {}
+
+        // Tell the frontend to drop back to lobby UI.
+        try {
+            $this->liveKit->sendDataToRoom(
+                $debate->livekit_room_name,
+                ['event' => 'returned_to_lobby']
+            );
+        } catch (\Throwable) {}
 
         $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);

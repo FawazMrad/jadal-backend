@@ -44,6 +44,10 @@ return [
         // mounts host /var/recordings at /out, so files must be written to /out
         // (writing to /var/recordings inside the container → permission denied).
         'egress_output_dir' => env('LIVEKIT_EGRESS_OUTPUT_DIR', '/out'),
+        // Request timeout (seconds) for backend → LiveKit Twirp calls (room +
+        // egress). The SDK's default HTTP client has NO timeout, so a stuck
+        // LiveKit server previously hung until PHP-FPM/Nginx killed the request.
+        'http_timeout' => env('LIVEKIT_HTTP_TIMEOUT', 8),
     ],
 
 ];

@@ -9,6 +9,7 @@ use App\Models\DebatePhase;
 use App\Models\User;
 use App\Services\LiveKitService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class NextStageTest extends TestCase
@@ -224,5 +225,41 @@ class NextStageTest extends TestCase
         $phase = DebatePhase::where('debate_id', $debate->id)->where('order_index', 1)->first();
         $this->assertEquals('completed', $phase->status);
         $this->assertNotNull($phase->ended_at);
+    }
+
+    public function test_concurrent_next_stage_request_is_rejected_with_409(): void
+    {
+        // Simulates a chair mashing next-stage: a request already holds the
+        // debate's lock (e.g. slow egress call in flight), so a second one
+        // must be rejected cleanly instead of piling up behind a DB lock.
+        [$debate, $chair] = $this->makeFullDebate();
+
+        $lock = Cache::lock("live-debate:next-stage:{$debate->id}", 15);
+        $this->assertTrue($lock->get());
+
+        $this->actingAs($chair)
+            ->postJson("/api/debates/{$debate->id}/next-stage")
+            ->assertStatus(409);
+
+        // Rejected before doing any work — stage must not have moved.
+        $this->assertEquals(0, $debate->fresh()->current_stage);
+
+        $lock->release();
+
+        $this->actingAs($chair)
+            ->postJson("/api/debates/{$debate->id}/next-stage")
+            ->assertStatus(200);
+        $this->assertEquals(1, $debate->fresh()->current_stage);
+    }
+
+    public function test_lock_is_released_after_request_completes(): void
+    {
+        // If the lock ever leaked, this second call would 409 instead of succeeding.
+        [$debate, $chair] = $this->makeFullDebate();
+
+        $this->actingAs($chair)->postJson("/api/debates/{$debate->id}/next-stage")->assertStatus(200);
+        $this->actingAs($chair)->postJson("/api/debates/{$debate->id}/next-stage")->assertStatus(200);
+
+        $this->assertEquals(2, $debate->fresh()->current_stage);
     }
 }

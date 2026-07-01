@@ -10,8 +10,12 @@ use Agence104\LiveKit\RoomCreateOptions;
 use Agence104\LiveKit\RoomServiceClient;
 use Agence104\LiveKit\VideoGrant;
 use App\Models\Debate;
+use App\Services\LiveKit\EgressServiceClientWithTimeout;
+use App\Services\LiveKit\RoomServiceClientWithTimeout;
 use Illuminate\Support\Facades\Log;
 use Livekit\EncodedFileOutput;
+use Livekit\EncodedFileType;
+use Livekit\TrackSource;
 
 /**
  * Two URLs are used:
@@ -42,10 +46,14 @@ class LiveKitService
     /**
      * Builds the LiveKit RoomService client (Twirp over the http(s) host).
      * Overridable so tests can assert the exact server-API calls.
+     *
+     * Uses a timeout-aware subclass — the SDK's default HTTP client has no
+     * request timeout, which previously let a stuck LiveKit server hang a
+     * request until PHP-FPM/Nginx killed it.
      */
     protected function roomServiceClient(): RoomServiceClient
     {
-        return new RoomServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        return new RoomServiceClientWithTimeout($this->host, $this->apiKey, $this->apiSecret, $this->httpTimeoutSeconds());
     }
 
     /**
@@ -55,7 +63,12 @@ class LiveKitService
      */
     protected function egressServiceClient(): EgressServiceClient
     {
-        return new EgressServiceClient($this->host, $this->apiKey, $this->apiSecret);
+        return new EgressServiceClientWithTimeout($this->host, $this->apiKey, $this->apiSecret, $this->httpTimeoutSeconds());
+    }
+
+    private function httpTimeoutSeconds(): float
+    {
+        return (float) config('services.livekit.http_timeout', 8);
     }
 
     // ── Token generation ──────────────────────────────────────────────────────
@@ -249,13 +262,35 @@ class LiveKitService
     // ── Egress ────────────────────────────────────────────────────────────────
 
     /**
-     * Start a ParticipantEgress recording the active speaker (by identity) to a
-     * file, and return the egress ID.
+     * Find the identity's published microphone track SID. Required by
+     * startTrackCompositeEgress, which targets tracks by SID rather than
+     * capturing a whole participant.
+     */
+    private function findMicrophoneTrackId(string $roomName, string $identity): string
+    {
+        $participant = $this->roomServiceClient()->getParticipant($roomName, $identity);
+
+        foreach ($participant->getTracks() as $track) {
+            if ($track->getSource() === TrackSource::MICROPHONE) {
+                return $track->getSid();
+            }
+        }
+
+        throw new \RuntimeException("No microphone audio track found for participant {$identity} in room {$roomName}.");
+    }
+
+    /**
+     * Start an audio-only TrackCompositeEgress recording the active speaker's
+     * microphone (by identity) to an .mp3, and return the egress ID.
+     *
+     * The platform only ever needs speech audio, never video — and video
+     * muxing/finalization on stop is measurably slower than audio-only,
+     * which was contributing to StopEgress timeouts. ParticipantEgressRequest
+     * has no audio-only option, so this targets the mic track directly via
+     * startTrackCompositeEgress with an empty video track id.
      *
      * Routed through the SDK's EgressServiceClient (Twirp call to
-     * /twirp/livekit.Egress/StartParticipantEgress over the http host). The
-     * previous hand-rolled POST to /twirp/livekit.EgressService/StartTrackEgress
-     * used a service name that does not exist, so it 404'd on every call.
+     * /twirp/livekit.Egress/StartTrackCompositeEgress over the http host).
      */
     public function startTrackEgressForParticipant(
         string $roomName,
@@ -263,19 +298,21 @@ class LiveKitService
         int|string $debateId,
         int $stageOrder
     ): string {
-        $outputDir = config('services.livekit.egress_output_dir', '/var/recordings');
-        $filePath  = "{$outputDir}/{$debateId}/stage-{$stageOrder}-{$identity}.mp4";
+        $outputDir = config('services.livekit.egress_output_dir', '/out');
+        $filePath  = "{$outputDir}/{$debateId}/stage-{$stageOrder}-{$identity}.mp3";
 
-        // .mp4 filepath → an MP4 EncodedFileOutput. It MUST be wrapped in
-        // EncodedOutputs: handed a bare EncodedFileOutput the SDK sets BOTH
-        // `file_outputs` AND a singular `file`, but ParticipantEgressRequest has
-        // no `file` field → "Invalid message property: file". The wrapper makes
-        // the SDK emit only `file_outputs`.
+        $audioTrackId = $this->findMicrophoneTrackId($roomName, $identity);
+
+        // Wrapped in EncodedOutputs so the SDK emits only `file_outputs` —
+        // TrackCompositeEgressRequest's singular `file` field is deprecated
+        // and triggers an E_USER_DEPRECATED notice if set directly.
         $output = (new EncodedOutputs())->setFile(
-            (new EncodedFileOutput())->setFilepath($filePath)
+            (new EncodedFileOutput())
+                ->setFilepath($filePath)
+                ->setFileType(EncodedFileType::MP3)
         );
 
-        $info = $this->egressServiceClient()->startParticipantEgress($roomName, $identity, $output);
+        $info = $this->egressServiceClient()->startTrackCompositeEgress($roomName, $output, $audioTrackId, '');
 
         return $info->getEgressId();
     }

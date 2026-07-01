@@ -4,8 +4,13 @@ namespace Tests\Feature;
 
 use Agence104\LiveKit\EgressServiceClient;
 use Agence104\LiveKit\EncodedOutputs;
+use Agence104\LiveKit\RoomServiceClient;
 use App\Services\LiveKitService;
 use Livekit\EgressInfo;
+use Livekit\EncodedFileType;
+use Livekit\ParticipantInfo;
+use Livekit\TrackInfo;
+use Livekit\TrackSource;
 use Mockery;
 use Tests\TestCase;
 
@@ -18,29 +23,56 @@ use Tests\TestCase;
  */
 class EgressClientWiringTest extends TestCase
 {
-    public function test_start_track_egress_calls_participant_egress_with_file_output(): void
+    public function test_start_track_egress_calls_track_composite_egress_with_audio_only_mp3(): void
     {
-        $egress = Mockery::mock(EgressServiceClient::class);
-        $egress->shouldReceive('startParticipantEgress')
+        $micTrack = (new TrackInfo())->setSid('TR_audio1')->setSource(TrackSource::MICROPHONE);
+        $participant = (new ParticipantInfo())->setTracks([$micTrack]);
+
+        $room = Mockery::mock(RoomServiceClient::class);
+        $room->shouldReceive('getParticipant')
             ->once()
-            ->withArgs(function (string $room, string $identity, $output): bool {
+            ->with('debate-deb-main', '26')
+            ->andReturn($participant);
+
+        $egress = Mockery::mock(EgressServiceClient::class);
+        $egress->shouldReceive('startTrackCompositeEgress')
+            ->once()
+            ->withArgs(function (string $roomName, $output, string $audioTrackId, string $videoTrackId): bool {
                 // Wrapped in EncodedOutputs (file only) so the SDK emits just
-                // file_outputs — never the invalid singular `file`.
-                return $room === 'debate-deb-main'
-                    && $identity === '26'
+                // file_outputs — never the deprecated singular `file` field.
+                return $roomName === 'debate-deb-main'
                     && $output instanceof EncodedOutputs
                     && $output->getFile() !== null
-                    && $output->getFile()->getFilepath() === '/out/103/stage-2-26.mp4';
+                    && $output->getFile()->getFilepath() === '/out/103/stage-2-26.mp3'
+                    && $output->getFile()->getFileType() === EncodedFileType::MP3
+                    && $audioTrackId === 'TR_audio1'
+                    && $videoTrackId === '';
             })
             ->andReturn((new EgressInfo())->setEgressId('EG_abc123'));
 
         $svc = Mockery::mock(LiveKitService::class)->makePartial();
         $svc->shouldAllowMockingProtectedMethods();
+        $svc->shouldReceive('roomServiceClient')->andReturn($room);
         $svc->shouldReceive('egressServiceClient')->andReturn($egress);
 
         $id = $svc->startTrackEgressForParticipant('debate-deb-main', '26', 103, 2);
 
         $this->assertSame('EG_abc123', $id);
+    }
+
+    public function test_start_track_egress_throws_when_no_microphone_track_published(): void
+    {
+        $participant = (new ParticipantInfo())->setTracks([]);
+
+        $room = Mockery::mock(RoomServiceClient::class);
+        $room->shouldReceive('getParticipant')->once()->andReturn($participant);
+
+        $svc = Mockery::mock(LiveKitService::class)->makePartial();
+        $svc->shouldAllowMockingProtectedMethods();
+        $svc->shouldReceive('roomServiceClient')->andReturn($room);
+
+        $this->expectException(\RuntimeException::class);
+        $svc->startTrackEgressForParticipant('debate-deb-main', '26', 103, 2);
     }
 
     public function test_stop_egress_calls_sdk_stop_egress(): void

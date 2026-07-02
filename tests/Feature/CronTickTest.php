@@ -7,6 +7,7 @@ use App\Models\Debate;
 use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
 use App\Models\DebatePhase;
+use App\Models\Team;
 use App\Models\User;
 use App\Services\LiveKitService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,6 +72,81 @@ class CronTickTest extends TestCase
         $this->artisan('debates:tick');
 
         $debate->refresh();
+        $this->assertNotNull($debate->prep_rooms_opened_at);
+    }
+
+    /** @return list<int> the created debater user ids, pooled onto $teamId with side=null/status=pending (mirrors announce()'s output). */
+    private function makePendingTeamPool(Debate $debate, int $teamId, int $count = 3): array
+    {
+        $ids = [];
+        for ($i = 0; $i < $count; $i++) {
+            $u = User::factory()->create(['role' => 'debater']);
+            DebateParticipant::factory()->create([
+                'debate_id' => $debate->id,
+                'user_id'   => $u->id,
+                'team_id'   => $teamId,
+                'role'      => 'debater',
+                'side'      => null,
+                'status'    => 'pending',
+            ]);
+            $ids[] = $u->id;
+        }
+
+        return $ids;
+    }
+
+    public function test_sides_randomly_assigned_and_teams_selected_reached(): void
+    {
+        // Reproduces the announce() -> debates:tick gap: announce() pools each
+        // team with side=null/status=pending and never sets a side itself: only
+        // this tick (at the prep-rooms-open offset) may assign sides and unblock
+        // hasBothSides() so status can leave 'announced'.
+        $format = $this->makeFormat();
+        $teamA  = Team::factory()->create();
+        $teamB  = Team::factory()->create();
+
+        // scheduled 10min from now, prep offset = 0.5h → open time = 20min ago →
+        // Step 2 (prep rooms) triggers, but Step 3 (start the debate) does not
+        // yet — scheduled_at itself is still in the future.
+        $debate = Debate::factory()->create([
+            'format_id'           => $format->id,
+            'status'               => 'announced',
+            'scheduled_at'         => now()->addMinutes(10),
+            'motion_revealed_at'   => now()->subMinutes(50),
+            'proposition_team_id'  => $teamA->id,
+            'opposition_team_id'   => $teamB->id,
+        ]);
+
+        $teamAUserIds = $this->makePendingTeamPool($debate, $teamA->id);
+        $teamBUserIds = $this->makePendingTeamPool($debate, $teamB->id);
+
+        $this->artisan('debates:tick');
+
+        $debate->refresh();
+
+        // The same two teams still occupy the two slots — only the order may have swapped.
+        $this->assertEqualsCanonicalizing(
+            [$teamA->id, $teamB->id],
+            [$debate->proposition_team_id, $debate->opposition_team_id]
+        );
+
+        $propUserIds = $debate->proposition_team_id === $teamA->id ? $teamAUserIds : $teamBUserIds;
+        $oppUserIds  = $debate->opposition_team_id === $teamA->id ? $teamAUserIds : $teamBUserIds;
+
+        foreach ($propUserIds as $uid) {
+            $this->assertDatabaseHas('debate_participants', [
+                'debate_id' => $debate->id, 'user_id' => $uid,
+                'side' => 'proposition', 'status' => 'approved',
+            ]);
+        }
+        foreach ($oppUserIds as $uid) {
+            $this->assertDatabaseHas('debate_participants', [
+                'debate_id' => $debate->id, 'user_id' => $uid,
+                'side' => 'opposition', 'status' => 'approved',
+            ]);
+        }
+
+        $this->assertEquals('teams-selected', $debate->status);
         $this->assertNotNull($debate->prep_rooms_opened_at);
     }
 

@@ -79,6 +79,17 @@ class AdvanceDebatesLifecycle extends Command
                 $this->warn("Debate {$debate->id}: could not create prep rooms — " . $e->getMessage());
             }
 
+            // announce() pools each team's members with side=null, status=pending —
+            // sides are deliberately not chosen until now. Randomly decide which
+            // announced team is proposition vs opposition and approve each team's
+            // pool onto that side, so hasBothSides() below can actually go true.
+            // Gated by prep_rooms_opened_at (checked above), so this only ever
+            // runs once per debate.
+            if ($debate->status === 'announced') {
+                $this->assignRandomSides($debate);
+                $debate->refresh();
+            }
+
             // announced → teams-selected once both sides have approved debaters.
             $hasBothSides = $this->hasBothSides($debate);
             $newStatus    = ($debate->status === 'announced' && $hasBothSides)
@@ -150,6 +161,46 @@ class AdvanceDebatesLifecycle extends Command
                 $this->info("Debate {$debate->id}: advanced to live.");
             }
         }
+    }
+
+    /**
+     * Coin-flip which of the two announced teams plays proposition vs
+     * opposition, then approve every debater in each team's pool onto that
+     * side. Mirrors the shape assignParticipants()/teamRoster() already use
+     * (side + status='approved' on debate_participants) — this just fills in
+     * the missing automatic trigger for debates that went through announce().
+     * Which 3 of each approved pool actually speak (and in what order) is
+     * decided later by the team leader via team-speakers, once prep rooms
+     * are open.
+     */
+    private function assignRandomSides(Debate $debate): void
+    {
+        $teamIds = [(int) $debate->proposition_team_id, (int) $debate->opposition_team_id];
+        if (in_array(0, $teamIds, true)) {
+            return; // announce() always sets both — defensive only.
+        }
+
+        if (random_int(0, 1) === 1) {
+            $teamIds = array_reverse($teamIds);
+        }
+        [$propTeamId, $oppTeamId] = $teamIds;
+
+        DB::transaction(function () use ($debate, $propTeamId, $oppTeamId) {
+            $debate->update([
+                'proposition_team_id' => $propTeamId,
+                'opposition_team_id'  => $oppTeamId,
+            ]);
+
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('team_id', $propTeamId)
+                ->where('role', 'debater')
+                ->update(['side' => 'proposition', 'status' => 'approved']);
+
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('team_id', $oppTeamId)
+                ->where('role', 'debater')
+                ->update(['side' => 'opposition', 'status' => 'approved']);
+        });
     }
 
     private function hasBothSides(Debate $debate): bool

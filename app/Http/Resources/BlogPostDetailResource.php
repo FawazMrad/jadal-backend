@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class BlogPostDetailResource extends JsonResource
 {
@@ -14,7 +15,11 @@ class BlogPostDetailResource extends JsonResource
             'title'            => $this->title,
             'slug'             => $this->slug,
             'content'          => $this->content,
-            'cover_image_url'  => $this->cover_image_url,
+            'cover_image_url'  => $this->cover_image_url
+                ? (str_starts_with($this->cover_image_url, 'http')
+                    ? $this->cover_image_url
+                    : Storage::disk('public')->url($this->cover_image_url))
+                : null,
             'author'           => new UserResource($this->whenLoaded('author')),
             'categories'       => CategoryResource::collection($this->whenLoaded('categories')),
             'tags'             => TagResource::collection($this->whenLoaded('tags')),

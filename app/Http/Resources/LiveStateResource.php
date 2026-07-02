@@ -208,6 +208,7 @@ class LiveStateResource extends JsonResource
     {
         return $debate->participants
             ->where('role', 'judge')
+            ->where('status', 'approved')
             ->values()
             ->map(fn ($j) => [
                 'id'          => $j->id,

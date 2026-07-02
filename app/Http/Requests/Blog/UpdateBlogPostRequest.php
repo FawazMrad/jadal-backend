@@ -16,7 +16,7 @@ class UpdateBlogPostRequest extends FormRequest
         return [
             'title'           => ['sometimes', 'string', 'max:255'],
             'content'         => ['sometimes', 'string'],
-            'cover_image_url' => ['sometimes', 'nullable', 'url', 'max:500'],
+            'cover_image'     => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'category_ids'    => ['sometimes', 'array'],
             'category_ids.*'  => ['integer', 'exists:blog_categories,id'],
             'tag_ids'         => ['sometimes', 'array'],

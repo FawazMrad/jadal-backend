@@ -288,11 +288,11 @@ class AdminDebateController extends Controller
     {
         $userIds = array_values(array_unique(array_map('intval', $userIds)));
 
-        // Sequential, zero-padded: random-0001, random-0002, ...
+        // Sequential, zero-padded: Random-00001, Random-00002, ...
         $sequence = Team::where('is_random', true)->count() + 1;
 
         $team = Team::create([
-            'name'       => 'random-' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
+            'name'       => 'Random-' . str_pad((string) $sequence, 5, '0', STR_PAD_LEFT),
             'leader_id'  => $userIds[0],
             'created_by' => $adminId,
             'is_random'  => true,

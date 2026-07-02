@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BlogPostResource extends JsonResource
@@ -15,7 +16,13 @@ class BlogPostResource extends JsonResource
             'title'           => $this->title,
             'slug'            => $this->slug,
             'excerpt'         => Str::limit(strip_tags($this->content), 200),
-            'cover_image_url' => $this->cover_image_url,
+            // Legacy rows may still hold a raw external URL; uploaded covers are
+            // stored as a relative path and need resolving (see UserResource::avatar_url).
+            'cover_image_url' => $this->cover_image_url
+                ? (str_starts_with($this->cover_image_url, 'http')
+                    ? $this->cover_image_url
+                    : Storage::disk('public')->url($this->cover_image_url))
+                : null,
             'author'          => new UserResource($this->whenLoaded('author')),
             'categories'      => CategoryResource::collection($this->whenLoaded('categories')),
             'tags'            => TagResource::collection($this->whenLoaded('tags')),

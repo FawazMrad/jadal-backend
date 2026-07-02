@@ -227,8 +227,8 @@ class AnnounceDebateTest extends TestCase
         $firstRandomId  = $debateOne->fresh()->opposition_team_id;
         $secondRandomId = $debateTwo->fresh()->opposition_team_id;
 
-        $this->assertDatabaseHas('teams', ['id' => $firstRandomId, 'name' => 'random-0001']);
-        $this->assertDatabaseHas('teams', ['id' => $secondRandomId, 'name' => 'random-0002']);
+        $this->assertDatabaseHas('teams', ['id' => $firstRandomId, 'name' => 'Random-00001']);
+        $this->assertDatabaseHas('teams', ['id' => $secondRandomId, 'name' => 'Random-00002']);
     }
 
     public function test_team_entry_cannot_be_both_team_id_and_user_ids(): void

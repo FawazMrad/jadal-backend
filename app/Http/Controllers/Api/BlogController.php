@@ -11,7 +11,9 @@ use App\Http\Resources\BlogPostResource;
 use App\Models\BlogPost;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BlogController extends Controller
@@ -121,7 +123,9 @@ class BlogController extends Controller
             'title'           => $data['title'],
             'slug'            => $this->generateSlug($data['title']),
             'content'         => $data['content'],
-            'cover_image_url' => $data['cover_image_url'] ?? null,
+            'cover_image_url' => $request->hasFile('cover_image')
+                ? $this->storeCoverImage($request->file('cover_image'))
+                : null,
             'status'          => 'pending_review',
         ]);
 
@@ -167,8 +171,9 @@ class BlogController extends Controller
         if (array_key_exists('content', $data)) {
             $updateData['content'] = $data['content'];
         }
-        if (array_key_exists('cover_image_url', $data)) {
-            $updateData['cover_image_url'] = $data['cover_image_url'];
+        if ($request->hasFile('cover_image')) {
+            $this->deleteCoverImageIfLocal($post->cover_image_url);
+            $updateData['cover_image_url'] = $this->storeCoverImage($request->file('cover_image'));
         }
 
         if (! empty($updateData)) {
@@ -212,6 +217,29 @@ class BlogController extends Controller
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Store an uploaded cover image under storage/app/public/blog-covers/{uuid}.ext
+     * and return the relative path (same pattern as ProfileController::uploadAvatar).
+     */
+    private function storeCoverImage(UploadedFile $file): string
+    {
+        $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
+        Storage::disk('public')->putFileAs('blog-covers', $file, $filename);
+
+        return 'blog-covers/' . $filename;
+    }
+
+    /**
+     * Delete a stored cover image file, but never an external URL (legacy rows
+     * created before uploads existed may still hold a raw http(s) link).
+     */
+    private function deleteCoverImageIfLocal(?string $path): void
+    {
+        if ($path && ! str_starts_with($path, 'http')) {
+            Storage::disk('public')->delete($path);
+        }
+    }
 
     private function generateSlug(string $title, ?int $excludeId = null): string
     {

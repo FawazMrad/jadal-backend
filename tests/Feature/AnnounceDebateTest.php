@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Debate;
+use App\Models\DebateParticipant;
 use App\Models\Team;
 use App\Models\TeamMember;
 use App\Models\User;
@@ -144,6 +145,90 @@ class AnnounceDebateTest extends TestCase
             'judges' => [$judge->id],
             'teams'  => [['team_id' => $small->id], ['team_id' => $teamB->id]],
         ])->assertStatus(422);
+    }
+
+    public function test_unselected_registrants_are_rejected_on_announce(): void
+    {
+        $debate = Debate::factory()->create(['status' => 'scheduled']);
+        $teamA  = $this->realTeam(3);
+        $teamB  = $this->realTeam(3);
+
+        // A third team registered but won't be picked.
+        $unpickedTeam = $this->realTeam(3);
+        foreach (TeamMember::where('team_id', $unpickedTeam->id)->pluck('user_id') as $uid) {
+            DebateParticipant::create([
+                'debate_id' => $debate->id, 'user_id' => $uid, 'team_id' => $unpickedTeam->id,
+                'role' => 'debater', 'side' => null, 'status' => 'pending', 'is_chair' => false, 'is_attended' => false,
+            ]);
+        }
+
+        // A solo debater registered but won't be picked either.
+        $unpickedSolo = User::factory()->create(['role' => 'debater', 'status' => 'active']);
+        DebateParticipant::create([
+            'debate_id' => $debate->id, 'user_id' => $unpickedSolo->id, 'team_id' => null,
+            'role' => 'debater', 'side' => null, 'status' => 'pending', 'is_chair' => false, 'is_attended' => false,
+        ]);
+
+        // A second judge registered but won't be listed in the announce call.
+        $unpickedJudge = User::factory()->create(['role' => 'judge', 'status' => 'active']);
+        DebateParticipant::create([
+            'debate_id' => $debate->id, 'user_id' => $unpickedJudge->id, 'team_id' => null,
+            'role' => 'judge', 'side' => 'judge', 'status' => 'pending', 'is_chair' => false, 'is_attended' => false,
+        ]);
+
+        $judge = User::factory()->create(['role' => 'judge', 'status' => 'active']);
+
+        $this->actingAs($this->admin())->postJson("/api/admin/debates/{$debate->id}/announce", [
+            'judges' => [$judge->id],
+            'teams'  => [['team_id' => $teamA->id], ['team_id' => $teamB->id]],
+        ])->assertStatus(200);
+
+        foreach (TeamMember::where('team_id', $unpickedTeam->id)->pluck('user_id') as $uid) {
+            $this->assertDatabaseHas('debate_participants', [
+                'debate_id' => $debate->id, 'user_id' => $uid, 'status' => 'rejected',
+            ]);
+        }
+        $this->assertDatabaseHas('debate_participants', [
+            'debate_id' => $debate->id, 'user_id' => $unpickedSolo->id, 'status' => 'rejected',
+        ]);
+        $this->assertDatabaseHas('debate_participants', [
+            'debate_id' => $debate->id, 'user_id' => $unpickedJudge->id, 'status' => 'rejected',
+        ]);
+
+        // The chosen judge and teams are untouched (still approved/pending as expected).
+        $this->assertDatabaseHas('debate_participants', [
+            'debate_id' => $debate->id, 'user_id' => $judge->id, 'status' => 'approved',
+        ]);
+        $this->assertDatabaseHas('debate_participants', [
+            'debate_id' => $debate->id, 'user_id' => $teamA->leader_id, 'status' => 'pending',
+        ]);
+    }
+
+    public function test_random_team_name_is_sequential(): void
+    {
+        $debateOne = Debate::factory()->create(['status' => 'scheduled']);
+        $debateTwo = Debate::factory()->create(['status' => 'scheduled']);
+        $teamA = $this->realTeam(3);
+        $teamC = $this->realTeam(3);
+        $judge = User::factory()->create(['role' => 'judge', 'status' => 'active']);
+
+        $solosOne = User::factory()->count(3)->create(['role' => 'debater', 'status' => 'active']);
+        $this->actingAs($this->admin())->postJson("/api/admin/debates/{$debateOne->id}/announce", [
+            'judges' => [$judge->id],
+            'teams'  => [['team_id' => $teamA->id], ['user_ids' => $solosOne->pluck('id')->all()]],
+        ])->assertStatus(200);
+
+        $solosTwo = User::factory()->count(3)->create(['role' => 'debater', 'status' => 'active']);
+        $this->actingAs($this->admin())->postJson("/api/admin/debates/{$debateTwo->id}/announce", [
+            'judges' => [$judge->id],
+            'teams'  => [['team_id' => $teamC->id], ['user_ids' => $solosTwo->pluck('id')->all()]],
+        ])->assertStatus(200);
+
+        $firstRandomId  = $debateOne->fresh()->opposition_team_id;
+        $secondRandomId = $debateTwo->fresh()->opposition_team_id;
+
+        $this->assertDatabaseHas('teams', ['id' => $firstRandomId, 'name' => 'random-0001']);
+        $this->assertDatabaseHas('teams', ['id' => $secondRandomId, 'name' => 'random-0002']);
     }
 
     public function test_team_entry_cannot_be_both_team_id_and_user_ids(): void

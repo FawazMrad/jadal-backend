@@ -231,9 +231,11 @@ class AdminDebateController extends Controller
 
             // 3) Each team's current members become this debate's debater pool,
             //    tagged with the team — side stays NULL (assigned later via roster).
+            $keptUserIds = array_map('intval', $validated['judges']);
             foreach ($teamIds as $teamId) {
                 $memberIds = TeamMember::where('team_id', $teamId)->where('status', 'current')->pluck('user_id');
                 foreach ($memberIds as $uid) {
+                    $keptUserIds[] = (int) $uid;
                     DebateParticipant::updateOrCreate(
                         ['debate_id' => $debate->id, 'user_id' => (int) $uid],
                         ['team_id' => $teamId, 'role' => 'debater', 'side' => null, 'status' => 'pending', 'is_chair' => false]
@@ -258,6 +260,15 @@ class AdminDebateController extends Controller
                 $order++;
             }
 
+            // 5) Anyone who registered but wasn't picked (a different team, a
+            //    solo debater not folded into a random team, an unlisted judge)
+            //    is left over as a stale 'pending' row from register() — reject
+            //    them now so they don't linger as an ambiguous participant.
+            DebateParticipant::where('debate_id', $debate->id)
+                ->where('status', 'pending')
+                ->whereNotIn('user_id', $keptUserIds)
+                ->update(['status' => 'rejected']);
+
             $debate->update(['status' => 'announced']);
         });
 
@@ -277,8 +288,11 @@ class AdminDebateController extends Controller
     {
         $userIds = array_values(array_unique(array_map('intval', $userIds)));
 
+        // Sequential, zero-padded: random-0001, random-0002, ...
+        $sequence = Team::where('is_random', true)->count() + 1;
+
         $team = Team::create([
-            'name'       => 'Lineup ' . Str::upper(Str::random(5)),
+            'name'       => 'random-' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
             'leader_id'  => $userIds[0],
             'created_by' => $adminId,
             'is_random'  => true,

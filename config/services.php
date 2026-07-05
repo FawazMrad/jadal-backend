@@ -50,4 +50,13 @@ return [
         'http_timeout' => env('LIVEKIT_HTTP_TIMEOUT', 8),
     ],
 
+    // Sprinkles §9 — support contact shown in the app's nav drawer. Rides on the
+    // login response so the mobile app never needs a second round-trip, and is
+    // editable via env without an app release.
+    'support' => [
+        'email'     => env('SUPPORT_EMAIL', 'support@jadal.app'),
+        'phone'     => env('SUPPORT_PHONE'),
+        'instagram' => env('SUPPORT_INSTAGRAM'),
+    ],
+
 ];

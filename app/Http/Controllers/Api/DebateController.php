@@ -23,6 +23,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class DebateController extends Controller
 {
@@ -82,6 +83,116 @@ class DebateController extends Controller
             $debates,
             'Debates retrieved successfully.'
         );
+    }
+
+    /**
+     * Sprinkles §8: GET /debates/search
+     *
+     * q matches debate title OR motion text. Filters combine with AND across
+     * dimensions and OR within one multi-select dimension. No status
+     * restriction — the profile screens search past (completed/cancelled)
+     * debates too. Response: same paginated shape as GET /debates.
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q'              => ['sometimes', 'nullable', 'string', 'max:200'],
+            'status'         => ['sometimes', 'array'],
+            'status.*'       => ['string', Rule::in(['scheduled', 'announced', 'teams-selected', 'live', 'completed', 'cancelled'])],
+            'format_id'      => ['sometimes', 'array'],
+            'format_id.*'    => ['integer'],
+            'debate_tag'     => ['sometimes', 'array'],
+            'debate_tag.*'   => ['string', 'max:100'],
+            'framework_id'   => ['sometimes', 'array'],
+            'framework_id.*' => ['integer'],
+            'judge_id'       => ['sometimes', 'array'],
+            'judge_id.*'     => ['integer'],
+            'team_id'        => ['sometimes', 'array'],
+            'team_id.*'      => ['integer'],
+            'user_id'        => ['sometimes', 'array'],
+            'user_id.*'      => ['integer'],
+            'date_from'      => ['sometimes', 'nullable', 'date'],
+            'date_to'        => ['sometimes', 'nullable', 'date', 'after_or_equal:date_from'],
+            'per_page'       => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $userId = $request->user()->id;
+
+        $query = Debate::query()
+            ->with(['format', 'motion.frameworks'])
+            // Same constrained eager-load as index() so DebateResource can
+            // resolve my_participation_status without an N+1.
+            ->with(['participants' => fn ($q) => $q->where('user_id', $userId)]);
+
+        if (! empty($validated['q'])) {
+            $term = $validated['q'];
+            $query->where(function ($q) use ($term) {
+                $q->where('title', 'LIKE', "%{$term}%")
+                  ->orWhereHas('motion', fn ($m) => $m->where('text', 'LIKE', "%{$term}%"));
+            });
+        }
+
+        if (! empty($validated['status'])) {
+            $query->whereIn('status', $validated['status']);
+        }
+        if (! empty($validated['format_id'])) {
+            $query->whereIn('format_id', $validated['format_id']);
+        }
+        if (! empty($validated['debate_tag'])) {
+            $query->whereIn('tag', $validated['debate_tag']);
+        }
+        if (! empty($validated['framework_id'])) {
+            $ids = $validated['framework_id'];
+            $query->whereHas('motion.frameworks', fn ($q) => $q->whereIn('motion_frameworks.id', $ids));
+        }
+        if (! empty($validated['judge_id'])) {
+            $ids = $validated['judge_id'];
+            $query->whereHas('participants', fn ($q) => $q->where('role', 'judge')->whereIn('user_id', $ids));
+        }
+        if (! empty($validated['team_id'])) {
+            $ids = $validated['team_id'];
+            $query->where(function ($q) use ($ids) {
+                $q->whereIn('proposition_team_id', $ids)
+                  ->orWhereIn('opposition_team_id', $ids)
+                  ->orWhereHas('participants', fn ($p) => $p->whereIn('team_id', $ids));
+            });
+        }
+        if (! empty($validated['user_id'])) {
+            $ids = $validated['user_id'];
+            $query->whereHas('participants', fn ($q) => $q->whereIn('user_id', $ids));
+        }
+        if (! empty($validated['date_from'])) {
+            $query->where('scheduled_at', '>=', $validated['date_from']);
+        }
+        if (! empty($validated['date_to'])) {
+            $query->where('scheduled_at', '<=', \Carbon\Carbon::parse($validated['date_to'])->endOfDay());
+        }
+
+        $debates = $query->orderBy('scheduled_at', 'desc')
+            ->paginate((int) ($validated['per_page'] ?? 15));
+
+        return $this->paginated(
+            DebateResource::collection($debates),
+            $debates,
+            'تم البحث في النقاشات. | Debates searched.'
+        );
+    }
+
+    /**
+     * Sprinkles §8: GET /debates/tags/distinct — every debate `tag` value
+     * currently in use (debate tags are free text, not managed entities).
+     */
+    public function distinctTags(): JsonResponse
+    {
+        $tags = Debate::whereNotNull('tag')
+            ->where('tag', '!=', '')
+            ->distinct()
+            ->orderBy('tag')
+            ->pluck('tag')
+            ->values()
+            ->all();
+
+        return $this->success(['tags' => $tags], 'تم جلب وسوم النقاشات. | Debate tags retrieved.');
     }
 
     public function show(Request $request, Debate $debate): JsonResponse

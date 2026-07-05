@@ -64,13 +64,28 @@ class LiveKitWebhookController extends Controller
             return;
         }
 
-        $participant->update(['is_attended' => true]);
-
         $isMainOrResult = in_array(
             $roomName,
             [$debate->livekit_room_name, $debate->result_room_name],
             true
         );
+        $isPrep = in_array(
+            $roomName,
+            [$debate->prop_room_name, $debate->opp_room_name],
+            true
+        );
+
+        // is_attended is LIVE presence (cleared again on leave). The *_at stamps
+        // are the sticky historical record driving the §6.5 attendance stats —
+        // set once on first join, never cleared.
+        $updates = ['is_attended' => true];
+        if ($isMainOrResult && $participant->first_attended_at === null) {
+            $updates['first_attended_at'] = now();
+        }
+        if ($isPrep && $participant->prep_attended_at === null) {
+            $updates['prep_attended_at'] = now();
+        }
+        $participant->update($updates);
 
         // Chair election runs on judge presence in the main room AND the result
         // room — judges deliberate in the result room (B3). The highest-ranked

@@ -1,15 +1,19 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminAchievementController;
 use App\Http\Controllers\Api\Admin\AdminBlogController;
 use App\Http\Controllers\Api\Admin\AdminDebateController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
+use App\Http\Controllers\Api\AttendanceStatsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
+use App\Http\Controllers\Api\DebateChatController;
 use App\Http\Controllers\Api\DebateController;
 use App\Http\Controllers\Api\DebaterStatsController;
+use App\Http\Controllers\Api\UserProfileController;
 use App\Http\Controllers\Api\LiveDebateController;
 use App\Http\Controllers\Api\LiveKitController;
 use App\Http\Controllers\Api\LiveKitWebhookController;
@@ -78,6 +82,12 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── Blog — reading, reactions & authoring (any auth user) ────────────────
     Route::prefix('blog')->name('blog.')->group(function (): void {
         Route::get('/',              [BlogController::class, 'index'])  ->name('index');
+        // Literal paths MUST be registered before the /{slug} wildcard.
+        // /blog/categories and /blog/tags are friendlier aliases of the
+        // /admin/blog/* list routes below (which any auth user could already read).
+        Route::get('/categories',    [AdminBlogController::class, 'listCategories'])->name('categories.index');
+        Route::get('/tags',          [AdminBlogController::class, 'listTags'])      ->name('tags.index');
+        Route::get('/authors',       [BlogController::class, 'authors'])            ->name('authors');
         Route::get('/{slug}',        [BlogController::class, 'show'])   ->name('show')
             ->where('slug', '[a-zA-Z0-9-]+');
         Route::post('/{post}/react', [BlogController::class, 'react'])  ->name('react');
@@ -123,12 +133,21 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── Debates — user-facing ─────────────────────────────────────────────────
     Route::prefix('debates')->name('debates.')->group(function (): void {
         Route::get('/',                       [DebateController::class, 'index'])              ->name('index');
+        // Literal paths MUST be registered before the /{debate} wildcard.
+        Route::get('/search',                 [DebateController::class, 'search'])             ->name('search');
+        Route::get('/tags/distinct',          [DebateController::class, 'distinctTags'])       ->name('tags.distinct');
         Route::get('/{debate}',               [DebateController::class, 'show'])               ->name('show');
         Route::get('/{debate}/registerable-teams', [DebateController::class, 'registerableTeams'])->name('registerable-teams');
         Route::get('/{debate}/registrations', [DebateController::class, 'registrations'])        ->name('registrations');
         Route::post('/{debate}/register',     [DebateController::class, 'register'])           ->name('register');
         Route::post('/{debate}/team-roster',  [DebateController::class, 'teamRoster'])         ->name('team-roster');
         Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])          ->name('token');
+
+        // Sprinkles §2 — persistent team chat (team resolved server-side from
+        // the caller's own participant row; additive to the peer team_chat event).
+        Route::get('/{debate}/chat',        [DebateChatController::class, 'index'])   ->name('chat.index');
+        Route::post('/{debate}/chat',       [DebateChatController::class, 'store'])   ->name('chat.store');
+        Route::post('/{debate}/chat/read',  [DebateChatController::class, 'markRead'])->name('chat.read');
 
         // Live session endpoints
         Route::get('/{debate}/live-state',              [LiveDebateController::class, 'state'])          ->name('live-state');
@@ -144,6 +163,18 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{debate}/close-room',             [LiveDebateController::class, 'closeRoom'])      ->name('close-room');
     });
 
+    // ── Sprinkles §6.1–§6.4: public user profiles ─────────────────────────────
+    Route::prefix('users/{user}')->name('users.')->group(function (): void {
+        Route::get('/',               [UserProfileController::class, 'show'])        ->name('show');
+        Route::get('/achievements',   [UserProfileController::class, 'achievements'])->name('achievements');
+        Route::get('/teams',          [UserProfileController::class, 'teams'])       ->name('teams');
+        Route::get('/teams/history',  [UserProfileController::class, 'teamsHistory'])->name('teams.history');
+    });
+
+    // ── Sprinkles §8: option lists for the debate-search filter dialog ────────
+    Route::get('/judges',        [UserProfileController::class, 'judges']) ->name('judges.index');
+    Route::get('/teams/options', [TeamController::class, 'options'])       ->name('teams.options');
+
     // ── Debater statistics (debater=own, coach=supervised, admin=any) ─────────
     Route::prefix('debaters/{debater}/stats')->name('debaters.stats.')->group(function (): void {
         Route::get('/win-rate',      [DebaterStatsController::class, 'winRate'])     ->name('win-rate');
@@ -151,7 +182,13 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/best-speaker',  [DebaterStatsController::class, 'bestSpeaker']) ->name('best-speaker');
         Route::get('/score-ranking', [DebaterStatsController::class, 'scoreRanking'])->name('score-ranking');
         Route::get('/improvement',   [DebaterStatsController::class, 'improvement']) ->name('improvement');
+        // Sprinkles §6.5 — prep-room attendance (same auth policy as the rest).
+        Route::get('/prep-attendance', [AttendanceStatsController::class, 'debater'])->name('prep-attendance');
     });
+
+    // ── Sprinkles §6.5: coach + judge attendance stats ─────────────────────────
+    Route::get('/trainers/{trainer}/stats/attendance', [AttendanceStatsController::class, 'trainer'])->name('trainers.stats.attendance');
+    Route::get('/judges/{judge}/stats/attendance',     [AttendanceStatsController::class, 'judge'])  ->name('judges.stats.attendance');
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────
     Route::prefix('feedback')->name('feedback.')->group(function (): void {
@@ -224,6 +261,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::put('/users/{user}',          [AdminUserController::class, 'update'])       ->name('users.update');
         Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus']) ->name('users.status');
         Route::delete('/users/{user}',       [AdminUserController::class, 'destroy'])      ->name('users.destroy');
+
+        // Sprinkles §6.3 — achievement awarding (minimal award/revoke).
+        Route::post('/users/{user}/achievements',                  [AdminAchievementController::class, 'store'])  ->name('users.achievements.store');
+        Route::delete('/users/{user}/achievements/{achievement}',  [AdminAchievementController::class, 'destroy'])->name('users.achievements.destroy');
 
         // Blog management
         Route::prefix('blog')->name('blog.')->group(function (): void {

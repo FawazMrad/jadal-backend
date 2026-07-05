@@ -39,8 +39,9 @@ class AuthController extends Controller
         $token = $user->createToken($request->input('device', 'api'))->plainTextToken;
 
         return $this->success([
-            'token' => $token,
-            'user'  => new UserResource($user),
+            'token'   => $token,
+            'user'    => new UserResource($user),
+            'contact' => $this->supportContact(),
         ], 'تم تسجيل الدخول بنجاح. | Login successful.');
     }
 
@@ -71,9 +72,24 @@ class AuthController extends Controller
         $token = $user->createToken($request->input('device', 'google'))->plainTextToken;
 
         return $this->success([
-            'token' => $token,
-            'user'  => new UserResource($user),
+            'token'   => $token,
+            'user'    => new UserResource($user),
+            'contact' => $this->supportContact(),
         ], 'تم تسجيل الدخول عبر Google بنجاح. | Google login successful.');
+    }
+
+    /**
+     * Sprinkles §9 — support contact for the app's nav drawer. Env-sourced
+     * (SUPPORT_EMAIL / SUPPORT_PHONE / SUPPORT_INSTAGRAM) so it is editable
+     * without an app release; riding on login avoids a second round-trip.
+     */
+    private function supportContact(): array
+    {
+        return [
+            'email'     => config('services.support.email'),
+            'phone'     => config('services.support.phone'),
+            'instagram' => config('services.support.instagram'),
+        ];
     }
 
     // ── FR-2: Logout ──────────────────────────────────────────────────────────

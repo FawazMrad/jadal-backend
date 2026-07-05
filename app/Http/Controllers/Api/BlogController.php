@@ -9,6 +9,7 @@ use App\Http\Requests\Blog\UpdateBlogPostRequest;
 use App\Http\Resources\BlogPostDetailResource;
 use App\Http\Resources\BlogPostResource;
 use App\Models\BlogPost;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -20,8 +21,27 @@ class BlogController extends Controller
 {
     // ── List published articles (paginated, filterable) ───────────────────────
 
+    /**
+     * Sprinkles §10 — the list endpoint doubles as the blog search: `q` matches
+     * title OR content; category_id[]/tag_id[]/publisher_id[] are multi-select
+     * (OR within a dimension, AND across dimensions); liked_by_me=true scopes
+     * to the caller's own like reactions. The legacy slug-based ?category= and
+     * ?tag= params keep working unchanged.
+     */
     public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'q'               => ['sometimes', 'nullable', 'string', 'max:200'],
+            'category_id'     => ['sometimes', 'array'],
+            'category_id.*'   => ['integer'],
+            'tag_id'          => ['sometimes', 'array'],
+            'tag_id.*'        => ['integer'],
+            'publisher_id'    => ['sometimes', 'array'],
+            'publisher_id.*'  => ['integer'],
+            'liked_by_me'     => ['sometimes', 'boolean'],
+            'per_page'        => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
         $query = BlogPost::with(['author', 'categories', 'tags'])
             ->selectRaw('blog_posts.*,
                 (SELECT COUNT(*) FROM blog_post_reactions WHERE post_id = blog_posts.id AND type = "like") as likes_count,
@@ -30,6 +50,7 @@ class BlogController extends Controller
             ->where('status', 'published')
             ->orderBy('published_at', 'desc');
 
+        // Legacy slug-based filters (kept as-is).
         if ($request->filled('category')) {
             $query->whereHas('categories', fn($q) => $q->where('slug', $request->category));
         }
@@ -38,12 +59,65 @@ class BlogController extends Controller
             $query->whereHas('tags', fn($q) => $q->where('slug', $request->tag));
         }
 
-        $posts = $query->paginate(15);
+        if (! empty($validated['q'])) {
+            $term = $validated['q'];
+            $query->where(function ($q) use ($term) {
+                $q->where('title', 'LIKE', "%{$term}%")
+                  ->orWhere('content', 'LIKE', "%{$term}%");
+            });
+        }
+        if (! empty($validated['category_id'])) {
+            $ids = $validated['category_id'];
+            $query->whereHas('categories', fn ($q) => $q->whereIn('blog_categories.id', $ids));
+        }
+        if (! empty($validated['tag_id'])) {
+            $ids = $validated['tag_id'];
+            $query->whereHas('tags', fn ($q) => $q->whereIn('blog_tags.id', $ids));
+        }
+        if (! empty($validated['publisher_id'])) {
+            $query->whereIn('author_id', $validated['publisher_id']);
+        }
+        if ($request->boolean('liked_by_me')) {
+            $userId = $request->user()->id;
+            $query->whereExists(function ($q) use ($userId) {
+                $q->selectRaw('1')
+                  ->from('blog_post_reactions')
+                  ->whereColumn('blog_post_reactions.post_id', 'blog_posts.id')
+                  ->where('blog_post_reactions.user_id', $userId)
+                  ->where('blog_post_reactions.type', 'like');
+            });
+        }
+
+        $posts = $query->paginate((int) ($validated['per_page'] ?? 15));
 
         return $this->paginated(
             BlogPostResource::collection($posts),
             $posts,
             'تم جلب المقالات بنجاح. | Articles retrieved.'
+        );
+    }
+
+    /**
+     * Sprinkles §10 — GET /blog/authors: users who have at least one published
+     * post, for the publisher filter's option picker.
+     */
+    public function authors(): JsonResponse
+    {
+        $authors = User::whereHas('blogPosts', fn ($q) => $q->where('status', 'published'))
+            ->orderBy('name')
+            ->get(['id', 'name', 'avatar_url']);
+
+        return $this->success(
+            $authors->map(fn ($a) => [
+                'id'         => (int) $a->id,
+                'name'       => $a->name,
+                'avatar_url' => $a->avatar_url
+                    ? (str_starts_with($a->avatar_url, 'http')
+                        ? $a->avatar_url
+                        : Storage::disk('public')->url($a->avatar_url))
+                    : null,
+            ])->values()->all(),
+            'تم جلب الكتّاب. | Authors retrieved.'
         );
     }
 

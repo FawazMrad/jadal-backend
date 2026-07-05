@@ -24,6 +24,8 @@ class User extends Authenticatable
         'avatar_url',
         'phone',
         'points',
+        'birth_date',
+        'location',
         'livekit_token',
     ];
 
@@ -38,9 +40,23 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
             'points'            => 'integer',
+            'birth_date'        => 'date',
             'role'              => 'string',
             'status'            => 'string',
         ];
+    }
+
+    /** Age in whole years, computed from birth_date — never stored, never stale. */
+    public function age(): ?int
+    {
+        return $this->birth_date?->age;
+    }
+
+    // ── Achievements ──────────────────────────────────────────────────────────
+
+    public function achievements(): HasMany
+    {
+        return $this->hasMany(Achievement::class);
     }
 
     // ── Motions ──────────────────────────────────────────────────────────────

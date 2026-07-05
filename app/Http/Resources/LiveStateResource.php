@@ -58,7 +58,14 @@ class LiveStateResource extends JsonResource
                 'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
             ],
 
+            // Sprinkles §7 — superset of the debate-list/detail format object, so
+            // one client-side parser covers both. Offsets are FLOAT HOURS
+            // (0.5 = 30 minutes): minutes = value * 60, seconds = value * 3600.
             'format' => $format ? [
+                'id'                           => $format->id,
+                'name'                         => $format->name,
+                'description'                  => $format->description,
+                'phase_config'                 => $config,
                 'speech_time_seconds'         => $config['speech_time_seconds'] ?? null,
                 'has_reply_speech'             => $config['has_reply_speech'] ?? false,
                 'reply_time_seconds'           => $config['reply_time_seconds'] ?? null,

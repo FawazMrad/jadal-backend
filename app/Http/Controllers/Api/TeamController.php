@@ -33,6 +33,8 @@ class TeamController extends Controller
                 $q->where('name', 'LIKE', "%{$term}%");
             });
 
+        $this->applyTeamFilters($query, $request);
+
         // Admin can see all teams
         if ($user->role === 'admin') {
             $teams = $query->latest()->get();
@@ -55,6 +57,53 @@ class TeamController extends Controller
             TeamResource::collection($teams),
             'تم جلب الفرق بنجاح. | Teams retrieved.'
         );
+    }
+
+    // ── Sprinkles §8: light teams list for filter dialogs (any auth user) ──────
+
+    /**
+     * GET /teams/options?is_random=0|1&status=active|inactive&search=
+     *
+     * Unlike GET /teams (admin/trainer only, full member payload), this returns
+     * a minimal {id, name, is_random, status} list any authenticated user can
+     * read — it exists to populate the debate-search filter dialog.
+     */
+    public function options(SearchListRequest $request): JsonResponse
+    {
+        $query = Team::query()
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('name', 'LIKE', "%{$term}%");
+            });
+
+        $this->applyTeamFilters($query, $request);
+
+        $teams = $query->orderBy('name')->get(['id', 'name', 'is_random', 'status']);
+
+        return $this->success(
+            $teams->map(fn (Team $t) => [
+                'id'        => (int) $t->id,
+                'name'      => $t->name,
+                'is_random' => (bool) $t->is_random,
+                'status'    => $t->status,
+            ])->values()->all(),
+            'تم جلب خيارات الفرق. | Team options retrieved.'
+        );
+    }
+
+    /**
+     * Shared ?is_random= / ?status= filtering (previously these params were
+     * silently ignored). Accepts is_random=0|1|true|false; status=active|inactive.
+     */
+    private function applyTeamFilters($query, Request $request): void
+    {
+        if ($request->filled('is_random')) {
+            $query->where('is_random', filter_var($request->query('is_random'), FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($request->filled('status') && in_array($request->query('status'), ['active', 'inactive'], true)) {
+            $query->where('status', $request->query('status'));
+        }
     }
 
     // ── FR-29: Create team ────────────────────────────────────────────────────

@@ -23,6 +23,8 @@ class DebateParticipant extends Pivot
         'status',
         'is_chair',
         'is_attended',
+        'first_attended_at',
+        'prep_attended_at',
         'speaking_phase_order',
         'judge_order',
         'is_reply_speaker',
@@ -33,6 +35,8 @@ class DebateParticipant extends Pivot
         return [
             'is_chair'            => 'boolean',
             'is_attended'         => 'boolean',
+            'first_attended_at'   => 'datetime',
+            'prep_attended_at'    => 'datetime',
             'speaking_phase_order' => 'integer',
             'judge_order'         => 'integer',
             'is_reply_speaker'    => 'boolean',

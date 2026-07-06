@@ -52,4 +52,54 @@ return [
         // Switch improvement granularity from monthly to yearly past this span.
         'improvement_month_to_year_span' => 24,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Points system (V2 §3)
+    |--------------------------------------------------------------------------
+    |
+    | Elo-style: delta = base + K*(actual - expected) + score_component.
+    |   expected = 1 / (1 + 10^((opponent_rating - own_rating) / 400))
+    |   actual   = 1 win / 0.5 draw / 0 loss
+    | own_rating / opponent_rating are the participant's / opposing team's
+    | CURRENT `points` value — there is no separate hidden Elo rating, so the
+    | displayed number and the rating used for the calculation are always the
+    | same thing (auditable via `points_histories`).
+    |
+    */
+    'points' => [
+        'k_elo'               => (int) env('POINTS_K_ELO', 24),
+        'base_participation'  => (int) env('POINTS_BASE_PARTICIPATION', 4),
+        // score_component = clamp(round((score - baseline) / divisor), -clamp, clamp)
+        'score_baseline'      => (int) env('POINTS_SCORE_BASELINE', 70),
+        'score_divisor'       => (int) env('POINTS_SCORE_DIVISOR', 5),
+        'score_clamp'         => (int) env('POINTS_SCORE_CLAMP', 8),
+        'min_points'          => (int) env('POINTS_MIN', 0),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Activity/participation scoring (V2 §7)
+    |--------------------------------------------------------------------------
+    |
+    | Flat per-event weights, NOT Elo-adjusted (registering/attending/viewing
+    | isn't a contest). Judge/coach attendance & misses weigh heaviest (their
+    | absence has the biggest structural impact); debater attendance next;
+    | registration/viewing smallest (they're "positive interest" signals).
+    |
+    */
+    'activity' => [
+        'registration_points' => (float) env('ACTIVITY_REGISTRATION_POINTS', 1),
+        'viewing_points'      => (float) env('ACTIVITY_VIEWING_POINTS', 0.5),
+        'attendance_points'   => [
+            'debater' => (float) env('ACTIVITY_ATTENDANCE_DEBATER', 3),
+            'trainer' => (float) env('ACTIVITY_ATTENDANCE_TRAINER', 5),
+            'judge'   => (float) env('ACTIVITY_ATTENDANCE_JUDGE', 6),
+        ],
+        'penalty_points' => [
+            'debater' => (float) env('ACTIVITY_PENALTY_DEBATER', -2),
+            'trainer' => (float) env('ACTIVITY_PENALTY_TRAINER', -6),
+            'judge'   => (float) env('ACTIVITY_PENALTY_JUDGE', -8),
+        ],
+    ],
 ];

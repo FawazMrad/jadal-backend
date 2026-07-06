@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Debate;
 use App\Models\DebateParticipant;
 use App\Models\DebatePhase;
+use App\Models\DebateViewer;
 use App\Services\LiveKitService;
 use Firebase\JWT\BeforeValidException;
 use Firebase\JWT\ExpiredException;
@@ -61,6 +62,17 @@ class LiveKitWebhookController extends Controller
             : null;
 
         if (! $participant) {
+            // V2 §7 — a non-participant joining the MAIN room is a viewer. No
+            // sticky-stamp treatment needed (no "missed viewing" penalty to be
+            // fair about) — just a lightweight join record, once per debate.
+            if ($debate && $roomName === $debate->livekit_room_name) {
+                DebateViewer::insertOrIgnore([
+                    'debate_id' => $debate->id,
+                    'user_id'   => $userId,
+                    'viewed_at' => now(),
+                ]);
+            }
+
             return;
         }
 

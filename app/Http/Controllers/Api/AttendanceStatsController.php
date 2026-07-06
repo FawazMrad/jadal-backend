@@ -70,7 +70,11 @@ class AttendanceStatsController extends Controller
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
-    /** Same policy as DebaterStatsController: self, admin, or supervising coach. */
+    /**
+     * V2 §9 — stats are public by default (any authenticated user may view);
+     * self/admin/supervising-coach ALWAYS see it, everyone else is blocked
+     * only when the target has opted out (`stats_visible = false`).
+     */
     private function canView(User $viewer, User $target): bool
     {
         if ($viewer->role === 'admin') {
@@ -79,14 +83,23 @@ class AttendanceStatsController extends Controller
         if ((int) $viewer->id === (int) $target->id) {
             return true;
         }
-        if ($viewer->role === 'trainer') {
-            return TeamMember::where('user_id', $target->id)
-                ->where('status', 'current')
-                ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
-                ->exists();
+        if ($this->isSupervisingCoach($viewer, $target)) {
+            return true;
         }
 
-        return false;
+        return (bool) $target->stats_visible;
+    }
+
+    private function isSupervisingCoach(User $viewer, User $target): bool
+    {
+        if ($viewer->role !== 'trainer') {
+            return false;
+        }
+
+        return TeamMember::where('user_id', $target->id)
+            ->where('status', 'current')
+            ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
+            ->exists();
     }
 
     private function forbidden(): JsonResponse

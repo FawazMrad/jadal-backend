@@ -84,9 +84,11 @@ class DebaterStatsController extends Controller
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Debater → own stats only; coach → supervised debaters; admin → anyone.
-     * A coach supervises a debater who is a CURRENT member of any team the coach
-     * created (teams.created_by = coach, team_members.status = 'current').
+     * V2 §9 — stats are public by default (any authenticated user may view);
+     * self/admin/supervising-coach ALWAYS see it regardless, everyone else is
+     * blocked only when the target has opted out (`stats_visible = false`).
+     * A coach supervises a debater who is a CURRENT member of any team the
+     * coach created (teams.created_by = coach, team_members.status = 'current').
      */
     private function canView(User $viewer, User $debater): bool
     {
@@ -96,14 +98,23 @@ class DebaterStatsController extends Controller
         if ((int) $viewer->id === (int) $debater->id) {
             return true;
         }
-        if ($viewer->role === 'trainer') {
-            return TeamMember::where('user_id', $debater->id)
-                ->where('status', 'current')
-                ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
-                ->exists();
+        if ($this->isSupervisingCoach($viewer, $debater)) {
+            return true;
         }
 
-        return false;
+        return (bool) $debater->stats_visible;
+    }
+
+    private function isSupervisingCoach(User $viewer, User $debater): bool
+    {
+        if ($viewer->role !== 'trainer') {
+            return false;
+        }
+
+        return TeamMember::where('user_id', $debater->id)
+            ->where('status', 'current')
+            ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
+            ->exists();
     }
 
     private function guardMonthSpan(StatsFilter $f, Collection $rows): ?JsonResponse

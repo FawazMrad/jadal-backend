@@ -8,6 +8,7 @@ use App\Http\Requests\Auth\GoogleLoginRequest;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Resources\UserResource;
+use App\Models\ContactInfo;
 use App\Models\User;
 use App\Services\GoogleTokenService;
 use Illuminate\Http\JsonResponse;
@@ -79,16 +80,18 @@ class AuthController extends Controller
     }
 
     /**
-     * Sprinkles §9 — support contact for the app's nav drawer. Env-sourced
-     * (SUPPORT_EMAIL / SUPPORT_PHONE / SUPPORT_INSTAGRAM) so it is editable
-     * without an app release; riding on login avoids a second round-trip.
+     * Sprinkles §9 — support contact for the app's nav drawer. DB-backed
+     * singleton row (ContactInfoSeeder), so it's editable data rather than a
+     * deploy-time env value; riding on login avoids a second round-trip.
      */
     private function supportContact(): array
     {
+        $contact = ContactInfo::current();
+
         return [
-            'email'     => config('services.support.email'),
-            'phone'     => config('services.support.phone'),
-            'instagram' => config('services.support.instagram'),
+            'email'     => $contact?->email,
+            'phone'     => $contact?->phone,
+            'instagram' => $contact?->instagram,
         ];
     }
 

@@ -26,11 +26,12 @@ class DebaterStatsAccessValidationTest extends TestCase
         $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
-    public function test_debater_cannot_view_another_debaters_stats(): void
+    /** V2 §9 — stats are public by default: any authenticated stranger can view them. */
+    public function test_stranger_can_view_stats_by_default(): void
     {
         $d = $this->debater();
         $other = $this->debater();
-        $this->actingAs($other)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(403);
+        $this->actingAs($other)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
     public function test_coach_can_view_supervised_debater(): void
@@ -40,11 +41,12 @@ class DebaterStatsAccessValidationTest extends TestCase
         $this->actingAs($coach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
-    public function test_coach_cannot_view_unsupervised_debater(): void
+    /** V2 §9 — an unrelated coach is just "any other user": public by default too. */
+    public function test_unsupervising_coach_can_view_stats_by_default(): void
     {
         $d = $this->debater();
         $strangerCoach = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
-        $this->actingAs($strangerCoach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(403);
+        $this->actingAs($strangerCoach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
     public function test_admin_can_view_anyone(): void
@@ -52,6 +54,21 @@ class DebaterStatsAccessValidationTest extends TestCase
         $d = $this->debater();
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $this->actingAs($admin)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
+    }
+
+    /** V2 §9 — opting out hides stats from everyone except self/admin/supervising coach. */
+    public function test_opted_out_debater_hides_stats_from_strangers_only(): void
+    {
+        $d = $this->debater();
+        $d->update(['stats_visible' => false]);
+        $coach   = $this->coachWithSupervisee($d);
+        $admin   = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $stranger = $this->debater();
+
+        $this->actingAs($stranger)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(403);
+        $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
+        $this->actingAs($admin)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
+        $this->actingAs($coach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
     // ── Validation rules ───────────────────────────────────────────────────────

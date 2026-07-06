@@ -84,10 +84,17 @@ class AttendanceStatsTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('data.totals.rate', 1);
 
-        // A random debater cannot view someone else's stats.
+        // V2 §9 — stats are public by default: a stranger CAN view them...
         $stranger = User::factory()->create(['role' => 'debater', 'status' => 'active']);
         $this->actingAs($stranger)->getJson("/api/trainers/{$coach->id}/stats/attendance")
+            ->assertStatus(200);
+
+        // ...unless the coach opted out.
+        $coach->update(['stats_visible' => false]);
+        $this->actingAs($stranger)->getJson("/api/trainers/{$coach->id}/stats/attendance")
             ->assertStatus(403);
+        $this->actingAs($coach)->getJson("/api/trainers/{$coach->id}/stats/attendance")
+            ->assertStatus(200);
     }
 
     public function test_webhook_join_stamps_sticky_attendance_and_leave_does_not_clear_it(): void

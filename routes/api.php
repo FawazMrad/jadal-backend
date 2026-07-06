@@ -2,17 +2,21 @@
 
 use App\Http\Controllers\Api\Admin\AdminAchievementController;
 use App\Http\Controllers\Api\Admin\AdminBlogController;
+use App\Http\Controllers\Api\Admin\AdminContactInfoController;
 use App\Http\Controllers\Api\Admin\AdminDebateController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
+use App\Http\Controllers\Api\ActivityStatsController;
 use App\Http\Controllers\Api\AttendanceStatsController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CoachTeamSummaryController;
 use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateChatController;
 use App\Http\Controllers\Api\DebateController;
 use App\Http\Controllers\Api\DebaterStatsController;
+use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\UserProfileController;
 use App\Http\Controllers\Api\LiveDebateController;
 use App\Http\Controllers\Api\LiveKitController;
@@ -112,6 +116,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── Search ────────────────────────────────────────────────────────────────
     Route::get('/search', [SearchController::class, 'index'])->name('search');
 
+    // ── V2 §3 — leaderboards (public top-10 rankings) ─────────────────────────
+    Route::get('/leaderboards/debaters', [LeaderboardController::class, 'debaters'])->name('leaderboards.debaters');
+    Route::get('/leaderboards/teams',    [LeaderboardController::class, 'teams'])   ->name('leaderboards.teams');
+
     // ── Debate formats — read (any auth user) ────────────────────────────────
     Route::prefix('debate-formats')->name('debate-formats.')->group(function (): void {
         Route::get('/',         [DebateFormatController::class, 'index']) ->name('index');
@@ -184,11 +192,18 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/improvement',   [DebaterStatsController::class, 'improvement']) ->name('improvement');
         // Sprinkles §6.5 — prep-room attendance (same auth policy as the rest).
         Route::get('/prep-attendance', [AttendanceStatsController::class, 'debater'])->name('prep-attendance');
+        // V2 §7 — activity/participation score (additional "kind" on the same screen).
+        Route::get('/activity', [ActivityStatsController::class, 'debater'])->name('activity');
     });
 
-    // ── Sprinkles §6.5: coach + judge attendance stats ─────────────────────────
+    // ── Sprinkles §6.5 + V2 §7: coach + judge attendance/activity stats ────────
     Route::get('/trainers/{trainer}/stats/attendance', [AttendanceStatsController::class, 'trainer'])->name('trainers.stats.attendance');
     Route::get('/judges/{judge}/stats/attendance',     [AttendanceStatsController::class, 'judge'])  ->name('judges.stats.attendance');
+    Route::get('/trainers/{trainer}/stats/activity',   [ActivityStatsController::class, 'trainer'])  ->name('trainers.stats.activity');
+    Route::get('/judges/{judge}/stats/activity',       [ActivityStatsController::class, 'judge'])    ->name('judges.stats.activity');
+
+    // V2 §3 — coach team-summary (avg improvement/win-rate/score/activity across the coach's teams).
+    Route::get('/trainers/{trainer}/stats/team-summary', [CoachTeamSummaryController::class, 'show'])->name('trainers.stats.team-summary');
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────
     Route::prefix('feedback')->name('feedback.')->group(function (): void {
@@ -356,6 +371,12 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::get('/',                [ComplaintController::class, 'index'])  ->name('index');
             Route::get('/{complaint}',     [ComplaintController::class, 'show'])   ->name('show');
             Route::patch('/{complaint}',   [ComplaintController::class, 'update']) ->name('update');
+        });
+
+        // V2 — admin-editable support contact (email/phone/instagram, served on login)
+        Route::prefix('contact-info')->name('contact-info.')->group(function (): void {
+            Route::get('/',  [AdminContactInfoController::class, 'show'])  ->name('show');
+            Route::put('/',  [AdminContactInfoController::class, 'update'])->name('update');
         });
     });
 });

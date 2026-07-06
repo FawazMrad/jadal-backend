@@ -13,6 +13,7 @@ use App\Models\DebateParticipant;
 use App\Models\DebatePhase;
 use App\Models\DebateResult;
 use App\Services\LiveKitService;
+use App\Services\Points\PointsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -902,6 +903,11 @@ class LiveDebateController extends Controller
                     $updates['result_revealed_at'] = now();
                 }
                 $debate->update($updates);
+
+                // V2 §3 — points system. Same eligibility bar the stats pipeline
+                // already uses (status=completed + a result exists), so this is
+                // the single, unambiguous trigger point. Idempotent internally.
+                app(PointsService::class)->awardForDebate($debate->fresh(['result']));
 
                 if ($debate->result_room_name) {
                     try {

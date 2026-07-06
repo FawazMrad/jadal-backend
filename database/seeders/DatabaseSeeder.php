@@ -21,6 +21,9 @@ class DatabaseSeeder extends Seeder
         $this->command->info('');
 
         $this->call([
+            // 0. Static/singleton content (no dependencies)
+            ContactInfoSeeder::class,
+
             // 1. RBAC: roles & permissions (must run before users get assigned roles)
             RolePermissionSeeder::class,
 
@@ -63,6 +66,9 @@ class DatabaseSeeder extends Seeder
 
             // 13. Audit logs (depends on everything else)
             AuditLogSeeder::class,
+
+            // 14. V2 §6 — demo profile data (depends on users + teams existing)
+            DemoProfileDataSeeder::class,
         ]);
 
         $this->command->info('');

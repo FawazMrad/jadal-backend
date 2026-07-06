@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContactInfo;
 use App\Models\Debate;
 use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
@@ -17,10 +18,10 @@ class SprinklesMiscTest extends TestCase
 
     public function test_login_response_carries_support_contact(): void
     {
-        config([
-            'services.support.email'     => 'help@jadal.app',
-            'services.support.phone'     => '+963-11-1234567',
-            'services.support.instagram' => 'https://instagram.com/jadal',
+        ContactInfo::create([
+            'email'     => 'help@jadal.app',
+            'phone'     => '+963-11-1234567',
+            'instagram' => 'https://instagram.com/jadal',
         ]);
 
         $user = User::factory()->create([

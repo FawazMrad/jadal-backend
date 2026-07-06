@@ -6,6 +6,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
@@ -26,6 +27,7 @@ class User extends Authenticatable
         'points',
         'birth_date',
         'location',
+        'stats_visible',
         'livekit_token',
     ];
 
@@ -41,6 +43,7 @@ class User extends Authenticatable
             'password'          => 'hashed',
             'points'            => 'integer',
             'birth_date'        => 'date',
+            'stats_visible'     => 'boolean',
             'role'              => 'string',
             'status'            => 'string',
         ];
@@ -57,6 +60,11 @@ class User extends Authenticatable
     public function achievements(): HasMany
     {
         return $this->hasMany(Achievement::class);
+    }
+
+    public function pointsHistories(): MorphMany
+    {
+        return $this->morphMany(PointsHistory::class, 'subject');
     }
 
     // ── Motions ──────────────────────────────────────────────────────────────

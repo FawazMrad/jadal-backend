@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Process;
 class TranscriptionService
 {
     private const FFMPEG_TIMEOUT_SECONDS = 300;
-    private const WHISPER_TIMEOUT_SECONDS = 600;
+    private const WHISPER_TIMEOUT_SECONDS = 1800;
 
     /** @return string one of: 'succeeded' | 'failed' | 'skipped_no_file' */
     public function transcribePhase(DebatePhase $phase): string

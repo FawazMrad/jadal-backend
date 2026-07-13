@@ -182,6 +182,8 @@ class TranscriptionService
 
         Be assertive about fixing garbled fragments using context — don't leave obviously broken word-fragments as-is just because you're not 100% certain of the exact original word. However, never invent new claims, arguments, or information that go beyond what the surrounding context supports, and never change the speaker's actual meaning, stance, or the substance of what they said. If a fragment is too corrupted to infer anything reasonable from context, you may omit just that fragment rather than guess wildly.
 
+        Even if large portions of the transcript are too corrupted to confidently interpret, you must still return your best-effort cleaned version — do not return an empty response under any circumstance. At minimum, remove clearly repeated filler phrases and obviously non-Arabic noise, and return the remaining text as-is if you cannot confidently improve it further.
+
         Return ONLY the cleaned Arabic text, with no preamble, no explanation, no markdown — just the cleaned transcript itself.
 
         Raw transcript:

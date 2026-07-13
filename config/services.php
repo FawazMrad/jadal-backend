@@ -62,4 +62,9 @@ return [
         'recordings_base_path' => env('RECORDINGS_BASE_PATH', '/var/recordings'),
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'model'   => env('GEMINI_MODEL', 'gemini-2.0-flash'),
+    ],
+
 ];

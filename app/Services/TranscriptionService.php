@@ -188,10 +188,12 @@ class TranscriptionService
             $response = Http::timeout(self::GROQ_TIMEOUT_SECONDS)
                 ->withHeaders(['Authorization' => "Bearer {$apiKey}"])
                 ->post('https://api.groq.com/openai/v1/chat/completions', [
-                    'model'    => $model,
-                    'messages' => [
+                    'model'            => $model,
+                    'messages'         => [
                         ['role' => 'user', 'content' => $prompt],
                     ],
+                    'max_tokens'       => 4096,
+                    'reasoning_effort' => 'low',
                 ]);
 
             if (! $response->successful()) {

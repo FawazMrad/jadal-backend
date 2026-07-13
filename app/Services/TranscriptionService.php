@@ -83,6 +83,43 @@ class TranscriptionService
     }
 
     /**
+     * Fires off a fully detached, backgrounded OS process running
+     * `debates:transcribe-single-phase {phaseId}` and returns immediately —
+     * the caller (the egress webhook) must never block on transcription.
+     *
+     * System-wide only-one-Whisper-at-a-time enforcement happens INSIDE that
+     * command via a blocking flock(), not here — this method may be called
+     * many times in quick succession (one per finished stage); each spawned
+     * process just queues up at the OS level waiting for the lock.
+     *
+     * Wrapped in `nice -n 19` (lowest scheduling priority) and
+     * `cpulimit -l 250` (hard cap at 2.5 cores) so a live Whisper run never
+     * competes with LiveKit/Nginx/DB traffic for CPU during a live debate.
+     * `nohup` + a trailing `&` detach it so it survives after this PHP
+     * request (and the PHP-FPM worker handling it) finishes.
+     */
+    public function dispatchBackgroundTranscription(DebatePhase $phase): void
+    {
+        $phaseId = (int) $phase->id;
+        $artisan = base_path('artisan');
+        $logPath = storage_path('logs/whisper-background.log');
+
+        $command = sprintf(
+            'nohup nice -n 19 cpulimit -l 250 -- php %s debates:transcribe-single-phase %s >> %s 2>&1 < /dev/null &',
+            escapeshellarg($artisan),
+            escapeshellarg((string) $phaseId),
+            escapeshellarg($logPath)
+        );
+
+        Log::info('Dispatching background transcription', [
+            'phase_id' => $phaseId,
+            'command'  => $command,
+        ]);
+
+        shell_exec($command);
+    }
+
+    /**
      * "/out/113/stage-1-30.mp3" -> "{recordings_base_path}/113/stage-1-30.mp3"
      * (replaces the leading in-container "/out" with the configured host base).
      */

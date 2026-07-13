@@ -243,6 +243,7 @@ class LiveKitWebhookController extends Controller
 
         if ($audioUrl) {
             $phase->update(['audio_url' => $audioUrl]);
+            app(\App\Services\TranscriptionService::class)->dispatchBackgroundTranscription($phase);
         }
     }
 

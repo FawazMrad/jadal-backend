@@ -50,4 +50,16 @@ return [
         'http_timeout' => env('LIVEKIT_HTTP_TIMEOUT', 8),
     ],
 
+    'whisper' => [
+        // Path to the Whisper CLI binary inside its Python venv on the host
+        // running the transcription command. Differs per environment (home
+        // directory), so it's env-driven rather than hardcoded.
+        'binary_path' => env('WHISPER_BINARY_PATH', '/home/fawaz/whisper-venv/bin/whisper'),
+        // Host filesystem base the egress container's /out is bind-mounted to
+        // (see services.livekit.egress_output_dir) — used to resolve a
+        // debate_phases.audio_url value like "/out/113/stage-1-30.mp3" into
+        // the real path this PHP process can read from disk.
+        'recordings_base_path' => env('RECORDINGS_BASE_PATH', '/var/recordings'),
+    ],
+
 ];

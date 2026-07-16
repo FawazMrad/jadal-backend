@@ -13,6 +13,8 @@ class Complaint extends Model
     protected $fillable = [
         'filed_by',
         'debate_id',
+        'target_user_id',
+        'target_role',
         'description',
         'status',
         'admin_response',
@@ -28,6 +30,12 @@ class Complaint extends Model
     public function filedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'filed_by');
+    }
+
+    /** Who the complaint is about (null on legacy/unattributed rows). */
+    public function targetUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'target_user_id');
     }
 
     public function debate(): BelongsTo

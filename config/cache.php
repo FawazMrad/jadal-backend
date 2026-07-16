@@ -78,6 +78,16 @@ return [
             'lock_connection' => env('REDIS_CACHE_LOCK_CONNECTION', 'default'),
         ],
 
+        // Dedicated store for the admin platform-stats cache (redis DB index
+        // REDIS_STATS_DB, default 2 — LiveKit uses 0, the app cache uses 1).
+        // Selected via ADMIN_STATS_CACHE_STORE below; kept as its own store so
+        // pointing stats at redis never changes where anything else caches.
+        'redis-stats' => [
+            'driver' => 'redis',
+            'connection' => 'stats',
+            'lock_connection' => 'default',
+        ],
+
         'dynamodb' => [
             'driver' => 'dynamodb',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -113,5 +123,21 @@ return [
     */
 
     'prefix' => env('CACHE_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-cache-'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin platform-stats cache
+    |--------------------------------------------------------------------------
+    |
+    | Which store the admin stats endpoints cache their aggregates in, and for
+    | how long. Null store = the app's default store (array in tests, so the
+    | test suite never needs Redis). On the production VPS set
+    | ADMIN_STATS_CACHE_STORE=redis-stats to reuse the LiveKit Redis server on
+    | its own DB index (see the redis-stats store above).
+    |
+    */
+
+    'admin_stats_store' => env('ADMIN_STATS_CACHE_STORE'),
+    'admin_stats_ttl'   => (int) env('ADMIN_STATS_CACHE_TTL', 600), // seconds
 
 ];

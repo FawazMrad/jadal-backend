@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\AdminAchievementController;
 use App\Http\Controllers\Api\Admin\AdminBlogController;
 use App\Http\Controllers\Api\Admin\AdminContactInfoController;
 use App\Http\Controllers\Api\Admin\AdminDebateController;
+use App\Http\Controllers\Api\Admin\AdminStatsController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\ActivityStatsController;
@@ -377,6 +378,24 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::prefix('contact-info')->name('contact-info.')->group(function (): void {
             Route::get('/',  [AdminContactInfoController::class, 'show'])  ->name('show');
             Route::put('/',  [AdminContactInfoController::class, 'update'])->name('update');
+        });
+
+        // Platform-wide statistics (JSON + Excel export per stat)
+        Route::prefix('stats')->name('stats.')->group(function (): void {
+            Route::get('/framework-fairness',        [AdminStatsController::class, 'frameworkFairness'])       ->name('framework-fairness');
+            Route::get('/framework-fairness/export', [AdminStatsController::class, 'frameworkFairnessExport']) ->name('framework-fairness.export');
+
+            Route::get('/leaderboard',               [AdminStatsController::class, 'leaderboard'])             ->name('leaderboard');
+            Route::get('/leaderboard/export',        [AdminStatsController::class, 'leaderboardExport'])       ->name('leaderboard.export');
+
+            Route::get('/platform-health',           [AdminStatsController::class, 'platformHealth'])          ->name('platform-health');
+            Route::get('/platform-health/export',    [AdminStatsController::class, 'platformHealthExport'])    ->name('platform-health.export');
+
+            Route::get('/engagement-churn',          [AdminStatsController::class, 'engagementChurn'])         ->name('engagement-churn');
+            Route::get('/engagement-churn/export',   [AdminStatsController::class, 'engagementChurnExport'])   ->name('engagement-churn.export');
+
+            Route::get('/complaint-accountability',        [AdminStatsController::class, 'complaintAccountability'])       ->name('complaint-accountability');
+            Route::get('/complaint-accountability/export', [AdminStatsController::class, 'complaintAccountabilityExport']) ->name('complaint-accountability.export');
         });
     });
 });

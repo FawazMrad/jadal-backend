@@ -24,10 +24,12 @@ class ComplaintController extends Controller
     public function store(StoreComplaintRequest $request): JsonResponse
     {
         $complaint = Complaint::create([
-            'filed_by'    => $request->user()->id,
-            'debate_id'   => $request->debate_id,
-            'description' => $request->description,
-            'status'      => 'open',
+            'filed_by'       => $request->user()->id,
+            'debate_id'      => $request->debate_id,
+            'target_user_id' => $request->target_user_id,
+            'target_role'    => $request->target_role,
+            'description'    => $request->description,
+            'status'         => 'open',
         ]);
 
         return $this->success(new ComplaintResource($complaint), 'تم تقديم الشكوى. | Complaint filed.', 201);
@@ -35,7 +37,7 @@ class ComplaintController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $complaints = Complaint::with('filedBy')
+        $complaints = Complaint::with(['filedBy', 'targetUser'])
             ->when($request->status, fn($q) => $q->where('status', $request->status))
             ->latest()
             ->paginate(20);
@@ -45,7 +47,7 @@ class ComplaintController extends Controller
 
     public function show(Complaint $complaint): JsonResponse
     {
-        $complaint->load('filedBy');
+        $complaint->load(['filedBy', 'targetUser']);
 
         return $this->success(new ComplaintResource($complaint), 'تم جلب الشكوى. | Complaint retrieved.');
     }
@@ -55,7 +57,7 @@ class ComplaintController extends Controller
         $complaint->update($request->validated());
 
         return $this->success(
-            new ComplaintResource($complaint->load('filedBy')),
+            new ComplaintResource($complaint->load(['filedBy', 'targetUser'])),
             'تم تحديث الشكوى. | Complaint updated.'
         );
     }

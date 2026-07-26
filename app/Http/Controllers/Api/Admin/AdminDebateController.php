@@ -60,7 +60,7 @@ class AdminDebateController extends Controller
     public function show(Debate $debate): JsonResponse
     {
         // feedbacks() relationship now correctly points to Feedbacks::class.
-        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'phases', 'result.judge', 'feedbacks.fromUser', 'feedbacks.toUser']);
+        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'participants.team', 'phases', 'result.judge', 'feedbacks.fromUser', 'feedbacks.toUser']);
 
         return $this->success(new DebateDetailResource($debate), 'تم جلب النقاش. | Debate retrieved.');
     }

@@ -51,35 +51,42 @@ class DemoProfileDataSeeder extends Seeder
             return;
         }
 
-        $ranks = ['gold', 'silver', 'bronze', 'honoring', 'participation'];
         $names = [
-            'gold'          => 'Best Speaker — Regional Finals',
-            'silver'        => 'Runner-up — Regional Finals',
-            'bronze'        => 'Semi-Finalist',
-            'honoring'      => 'Outstanding Contribution',
-            'participation' => 'Season Participant',
+            'GOLD'          => 'Best Speaker — Regional Finals',
+            'SILVER'        => 'Runner-up — Regional Finals',
+            'BRONZE'        => 'Semi-Finalist',
+            'HONORABLE'     => 'Outstanding Contribution',
+            'PARTICIPATION' => 'Season Participant',
         ];
 
+        // One catalog entry per type — assignments below reuse these, since
+        // the achievement feature is now catalog + per-user assignment
+        // rather than one row per earned instance.
+        $catalog = [];
+        foreach ($names as $type => $name) {
+            $catalog[$type] = Achievement::create(['name' => $name, 'type' => $type]);
+        }
+
+        $admin    = User::where('role', 'admin')->first();
         $debaters = User::where('role', 'debater')->limit(6)->get();
-        $created = 0;
+        $types    = array_keys($names);
+        $created  = 0;
 
         foreach ($debaters as $i => $debater) {
-            foreach ($ranks as $j => $rank) {
-                // Uneven spread — not every debater gets every rank.
+            foreach ($types as $j => $type) {
+                // Uneven spread — not every debater gets every type.
                 if (($i + $j) % 2 !== 0) {
                     continue;
                 }
-                Achievement::create([
-                    'user_id'    => $debater->id,
-                    'name'       => $names[$rank],
-                    'rank'       => $rank,
-                    'awarded_at' => now()->subMonths(rand(1, 12))->subDays(rand(0, 27)),
+                $debater->achievements()->attach($catalog[$type]->id, [
+                    'assigned_at' => now()->subMonths(rand(1, 12))->subDays(rand(0, 27)),
+                    'assigned_by' => $admin?->id,
                 ]);
                 $created++;
             }
         }
 
-        $this->command->info("✓ Seeded {$created} demo achievements across {$debaters->count()} debaters.");
+        $this->command->info("✓ Seeded {$created} demo achievement assignments (5-entry catalog) across {$debaters->count()} debaters.");
     }
 
     private function seedOneTeamHistorySwap(): void

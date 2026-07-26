@@ -278,9 +278,20 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::patch('/users/{user}/status', [AdminUserController::class, 'updateStatus']) ->name('users.status');
         Route::delete('/users/{user}',       [AdminUserController::class, 'destroy'])      ->name('users.destroy');
 
-        // Sprinkles §6.3 — achievement awarding (minimal award/revoke).
-        Route::post('/users/{user}/achievements',                  [AdminAchievementController::class, 'store'])  ->name('users.achievements.store');
-        Route::delete('/users/{user}/achievements/{achievement}',  [AdminAchievementController::class, 'destroy'])->name('users.achievements.destroy');
+        // Achievement catalog — pre-defined achievements (name/type/image),
+        // shared across users. Not paginated: a small, curated reference list.
+        Route::prefix('achievements')->name('achievements.')->group(function (): void {
+            Route::get('/',                 [AdminAchievementController::class, 'index'])  ->name('index');
+            Route::post('/',                [AdminAchievementController::class, 'store'])  ->name('store');
+            Route::get('/{achievement}',    [AdminAchievementController::class, 'show'])   ->name('show');
+            Route::put('/{achievement}',    [AdminAchievementController::class, 'update']) ->name('update');
+            Route::delete('/{achievement}', [AdminAchievementController::class, 'destroy'])->name('destroy');
+        });
+
+        // Achievement awarding — assign/revoke a catalog achievement to/from a user.
+        Route::get('/users/{user}/achievements/available',        [AdminAchievementController::class, 'available'])->name('users.achievements.available');
+        Route::post('/users/{user}/achievements',                  [AdminAchievementController::class, 'assign'])  ->name('users.achievements.store');
+        Route::delete('/users/{user}/achievements/{achievement}',  [AdminAchievementController::class, 'revoke'])  ->name('users.achievements.destroy');
 
         // Blog management
         Route::prefix('blog')->name('blog.')->group(function (): void {

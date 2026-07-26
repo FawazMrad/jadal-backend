@@ -37,7 +37,7 @@ class LiveDebateController extends Controller
         $debate->load([
             'format',
             'motion.frameworks',
-            'participants.user',
+            'participants.user', 'participants.team',
             'phases',
             'result.judge',
         ]);
@@ -146,7 +146,7 @@ class LiveDebateController extends Controller
             }
         });
 
-        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', request()->user()->id);
 
         return $this->success(
@@ -365,7 +365,7 @@ class LiveDebateController extends Controller
             $lock->release();
         }
 
-        $result->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $result->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $result->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -411,7 +411,7 @@ class LiveDebateController extends Controller
             } catch (\Throwable) {}
         }
 
-        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -474,7 +474,7 @@ class LiveDebateController extends Controller
         $phase->refresh();
         $this->broadcastTimer($debate, $phase);
 
-        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -697,7 +697,7 @@ class LiveDebateController extends Controller
             );
         } catch (\Throwable) {}
 
-        $debate->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -777,7 +777,7 @@ class LiveDebateController extends Controller
             );
         } catch (\Throwable) {}
 
-        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -840,7 +840,7 @@ class LiveDebateController extends Controller
             }
         });
 
-        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(
@@ -930,7 +930,7 @@ class LiveDebateController extends Controller
             }
         });
 
-        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'phases', 'result.judge']);
+        $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
         return $this->success(

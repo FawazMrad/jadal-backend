@@ -57,9 +57,12 @@ class User extends Authenticatable
 
     // ── Achievements ──────────────────────────────────────────────────────────
 
-    public function achievements(): HasMany
+    /** Catalog achievements this user has been awarded, via achievement_assignments. */
+    public function achievements(): BelongsToMany
     {
-        return $this->hasMany(Achievement::class);
+        return $this->belongsToMany(Achievement::class, 'achievement_assignments')
+            ->using(AchievementAssignment::class)
+            ->withPivot(['id', 'assigned_at', 'assigned_by']);
     }
 
     public function pointsHistories(): MorphMany

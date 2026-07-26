@@ -324,7 +324,7 @@ class AdminDebateController extends Controller
         $participants = DebateParticipant::where('debate_id', $debate->id)
             ->where('team_id', $team->id)
             ->where('status', 'pending')
-            ->with('user')
+            ->with(['user', 'team'])
             ->get();
 
         return $this->success(

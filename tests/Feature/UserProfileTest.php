@@ -42,14 +42,25 @@ class UserProfileTest extends TestCase
         $target = User::factory()->create(['role' => 'debater', 'status' => 'active']);
         $viewer = User::factory()->create(['role' => 'debater', 'status' => 'active']);
 
+        $catalog = [];
         foreach ([
-            ['rank' => 'participation', 'name' => 'P',  'awarded_at' => now()->subDays(1)],
-            ['rank' => 'gold',          'name' => 'G1', 'awarded_at' => now()->subDays(10)],
-            ['rank' => 'gold',          'name' => 'G2', 'awarded_at' => now()->subDays(2)],
-            ['rank' => 'silver',        'name' => 'S',  'awarded_at' => now()],
-            ['rank' => 'bronze',        'name' => 'B',  'awarded_at' => now()],
-        ] as $a) {
-            Achievement::create($a + ['user_id' => $target->id]);
+            'P'  => 'PARTICIPATION',
+            'G1' => 'GOLD',
+            'G2' => 'GOLD',
+            'S'  => 'SILVER',
+            'B'  => 'BRONZE',
+        ] as $name => $type) {
+            $catalog[$name] = Achievement::create(['name' => $name, 'type' => $type]);
+        }
+
+        foreach ([
+            'P'  => now()->subDays(1),
+            'G1' => now()->subDays(10),
+            'G2' => now()->subDays(2),
+            'S'  => now(),
+            'B'  => now(),
+        ] as $name => $assignedAt) {
+            $target->achievements()->attach($catalog[$name]->id, ['assigned_at' => $assignedAt]);
         }
 
         $res = $this->actingAs($viewer)->getJson("/api/users/{$target->id}");
@@ -63,10 +74,8 @@ class UserProfileTest extends TestCase
     {
         $target = User::factory()->create(['role' => 'debater', 'status' => 'active']);
         for ($i = 1; $i <= 7; $i++) {
-            Achievement::create([
-                'user_id' => $target->id, 'name' => "A{$i}",
-                'rank' => 'participation', 'awarded_at' => now()->subDays($i),
-            ]);
+            $achievement = Achievement::create(['name' => "A{$i}", 'type' => 'PARTICIPATION']);
+            $target->achievements()->attach($achievement->id, ['assigned_at' => now()->subDays($i)]);
         }
 
         $res = $this->actingAs($target)->getJson("/api/users/{$target->id}/achievements?per_page=5");
@@ -76,25 +85,34 @@ class UserProfileTest extends TestCase
 
     public function test_admin_can_award_and_revoke_achievements(): void
     {
-        $admin  = User::factory()->create(['role' => 'admin', 'status' => 'active']);
-        $target = User::factory()->create(['role' => 'debater', 'status' => 'active']);
+        $admin       = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $target      = User::factory()->create(['role' => 'debater', 'status' => 'active']);
+        $achievement = Achievement::create(['name' => 'Best Speaker — Regional Finals 2026', 'type' => 'GOLD']);
 
         $res = $this->actingAs($admin)->postJson("/api/admin/users/{$target->id}/achievements", [
-            'name' => 'Best Speaker — Regional Finals 2026',
-            'rank' => 'gold',
+            'achievement_id' => $achievement->id,
         ]);
         $res->assertStatus(201);
-        $id = $res->json('data.id');
-        $this->assertDatabaseHas('achievements', ['id' => $id, 'user_id' => $target->id, 'rank' => 'gold']);
+        $this->assertDatabaseHas('achievement_assignments', [
+            'user_id' => $target->id, 'achievement_id' => $achievement->id, 'assigned_by' => $admin->id,
+        ]);
+
+        // Duplicate award rejected.
+        $this->actingAs($admin)->postJson("/api/admin/users/{$target->id}/achievements", [
+            'achievement_id' => $achievement->id,
+        ])->assertStatus(409);
 
         // Non-admin cannot award.
+        $other = Achievement::create(['name' => 'x', 'type' => 'BRONZE']);
         $this->actingAs($target)->postJson("/api/admin/users/{$target->id}/achievements", [
-            'name' => 'x', 'rank' => 'gold',
+            'achievement_id' => $other->id,
         ])->assertStatus(403);
 
-        $this->actingAs($admin)->deleteJson("/api/admin/users/{$target->id}/achievements/{$id}")
+        $this->actingAs($admin)->deleteJson("/api/admin/users/{$target->id}/achievements/{$achievement->id}")
             ->assertStatus(200);
-        $this->assertDatabaseMissing('achievements', ['id' => $id]);
+        $this->assertDatabaseMissing('achievement_assignments', [
+            'user_id' => $target->id, 'achievement_id' => $achievement->id,
+        ]);
     }
 
     public function test_teams_current_and_history(): void

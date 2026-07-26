@@ -36,50 +36,89 @@ return new class extends Migration
         'participation' => 'PARTICIPATION',
     ];
 
+    /**
+     * Every phase below is guarded so this migration can safely RESUME after
+     * a partial failure — MariaDB has no transactional DDL, so a failure
+     * midway (see the dropForeign/dropIndex ordering note) leaves real
+     * schema changes in place while `migrations` still shows this file as
+     * pending, and a naive re-run would immediately re-collide with
+     * whatever already succeeded (CREATE TABLE, duplicate column, duplicate
+     * unique-key insert, ...).
+     */
     public function up(): void
     {
-        Schema::create('achievement_assignments', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            // restrictOnDelete: deleting a catalog achievement while it still
-            // has assignments must fail at the DB level too (defense in depth
-            // alongside the application-level check in the controller).
-            $table->foreignId('achievement_id')->constrained('achievements')->restrictOnDelete();
-            $table->timestamp('assigned_at');
-            // Nullable: legacy rows backfilled below have no known awarding
-            // admin (the old schema never recorded one).
-            $table->foreignId('assigned_by')->nullable()->constrained('users')->nullOnDelete();
+        if (! Schema::hasTable('achievement_assignments')) {
+            Schema::create('achievement_assignments', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+                // restrictOnDelete: deleting a catalog achievement while it still
+                // has assignments must fail at the DB level too (defense in depth
+                // alongside the application-level check in the controller).
+                $table->foreignId('achievement_id')->constrained('achievements')->restrictOnDelete();
+                $table->timestamp('assigned_at');
+                // Nullable: legacy rows backfilled below have no known awarding
+                // admin (the old schema never recorded one).
+                $table->foreignId('assigned_by')->nullable()->constrained('users')->nullOnDelete();
 
-            $table->unique(['user_id', 'achievement_id']);
-        });
+                $table->unique(['user_id', 'achievement_id']);
+            });
+        }
+
+        if (! Schema::hasColumn('achievements', 'type')) {
+            Schema::table('achievements', function (Blueprint $table) {
+                $table->string('type')->nullable()->after('name');
+            });
+        }
+
+        // The old columns are only present until the cleanup step at the
+        // bottom of this block succeeds — their presence IS the "backfill/
+        // cleanup not finished yet" signal, so this whole block is safe to
+        // skip entirely once a previous run already got past it.
+        if (Schema::hasColumn('achievements', 'user_id')) {
+            // Backfill: one achievement_assignments row per existing
+            // achievements row, using the row's own id as achievement_id
+            // (each historical row becomes its own catalog entry — see class
+            // doc above). Both writes are individually guarded so resuming
+            // after a partial run never re-sets an already-correct type or
+            // hits the (user_id, achievement_id) unique constraint on a row
+            // that made it through before the earlier failure.
+            DB::table('achievements')->orderBy('id')->each(function ($row) {
+                if ($row->type === null) {
+                    DB::table('achievements')->where('id', $row->id)->update([
+                        'type' => self::TYPE_MAP[$row->rank] ?? 'PARTICIPATION',
+                    ]);
+                }
+
+                $alreadyMigrated = DB::table('achievement_assignments')
+                    ->where('user_id', $row->user_id)
+                    ->where('achievement_id', $row->id)
+                    ->exists();
+
+                if (! $alreadyMigrated) {
+                    DB::table('achievement_assignments')->insert([
+                        'user_id'        => $row->user_id,
+                        'achievement_id' => $row->id,
+                        'assigned_at'    => $row->awarded_at,
+                        'assigned_by'    => null,
+                    ]);
+                }
+            });
+
+            Schema::table('achievements', function (Blueprint $table) {
+                // MariaDB/InnoDB refuses to drop an index that a foreign key
+                // still depends on — and the composite (user_id, awarded_at)
+                // index is exactly what satisfies the user_id FK here (no
+                // separate single-column index was ever created for it, since
+                // this composite one already covered it at CREATE TABLE
+                // time). The FK must go first. SQLite doesn't enforce this,
+                // which is why this ordering bug wasn't caught in dev.
+                $table->dropForeign(['user_id']);
+                $table->dropIndex(['user_id', 'awarded_at']);
+                $table->dropColumn(['user_id', 'rank', 'awarded_at']);
+            });
+        }
 
         Schema::table('achievements', function (Blueprint $table) {
-            $table->string('type')->nullable()->after('name');
-        });
-
-        // Backfill: one achievement_assignments row per existing achievements
-        // row, using the row's own id as achievement_id (each historical row
-        // becomes its own catalog entry — see class doc above).
-        DB::table('achievements')->orderBy('id')->each(function ($row) {
-            DB::table('achievements')->where('id', $row->id)->update([
-                'type' => self::TYPE_MAP[$row->rank] ?? 'PARTICIPATION',
-            ]);
-
-            DB::table('achievement_assignments')->insert([
-                'user_id'        => $row->user_id,
-                'achievement_id' => $row->id,
-                'assigned_at'    => $row->awarded_at,
-                'assigned_by'    => null,
-            ]);
-        });
-
-        Schema::table('achievements', function (Blueprint $table) {
-            // The original migration's composite index covers both columns
-            // being dropped below — SQLite refuses to drop a column that a
-            // surviving index still references, so this must go first.
-            $table->dropIndex(['user_id', 'awarded_at']);
-            $table->dropConstrainedForeignId('user_id');
-            $table->dropColumn(['rank', 'awarded_at']);
             $table->string('type')->nullable(false)->change();
         });
     }

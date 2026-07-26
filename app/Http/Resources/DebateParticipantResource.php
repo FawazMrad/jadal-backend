@@ -13,6 +13,9 @@ class DebateParticipantResource extends JsonResource
             'id'                   => $this->id,
             'user'                 => new UserResource($this->whenLoaded('user')),
             'team_id'              => $this->team_id,
+            // null when team_id is null (no team) — matches team_id 1:1 since
+            // this is a straight belongsTo lookup, not a separate condition.
+            'team_name'            => $this->whenLoaded('team', fn () => $this->team?->name),
             'role'                 => $this->role,
             'side'                 => $this->side,
             'status'               => $this->status,

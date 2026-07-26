@@ -207,7 +207,7 @@ class DebateController extends Controller
             return $this->error('غير مصرح بالوصول لهذا النقاش. | Access denied.', [], 403);
         }
 
-        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'phases', 'result.judge']);
+        $debate->load(['format', 'motion', 'createdBy', 'participants.user', 'participants.team', 'phases', 'result.judge']);
 
         $feedbackQuery = Feedbacks::where('debate_id', $debate->id)->with(['fromUser', 'toUser']);
 

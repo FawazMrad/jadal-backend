@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Achievement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 /** Achievement feature redesign — catalog CRUD + the delete-guard + available-for-user. */
@@ -85,6 +86,38 @@ class AchievementCatalogTest extends TestCase
         $forced->assertStatus(200);
         $this->assertDatabaseMissing('achievements', ['id' => $achievement->id]);
         $this->assertDatabaseMissing('achievement_assignments', ['achievement_id' => $achievement->id]);
+    }
+
+    public function test_update_image_add_remove_and_untouched_cases(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $achievement = Achievement::create(['name' => 'X', 'type' => 'GOLD', 'image_url' => null]);
+
+        // image = an actual file -> add it.
+        $add = $this->actingAs($admin)->putJson("/api/admin/achievements/{$achievement->id}", [
+            'name'  => 'X',
+            'image' => UploadedFile::fake()->image('badge.jpg'),
+        ]);
+        $add->assertStatus(200);
+        $this->assertNotNull($add->json('data.image_url'));
+        $storedPath = $achievement->fresh()->image_url;
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($storedPath);
+
+        // image key absent entirely -> untouched.
+        $untouched = $this->actingAs($admin)->putJson("/api/admin/achievements/{$achievement->id}", [
+            'name' => 'X renamed',
+        ]);
+        $untouched->assertStatus(200);
+        $this->assertSame($storedPath, $achievement->fresh()->image_url);
+
+        // image = "" -> remove it (and delete the stored file).
+        $remove = $this->actingAs($admin)->putJson("/api/admin/achievements/{$achievement->id}", [
+            'image' => '',
+        ]);
+        $remove->assertStatus(200);
+        $this->assertNull($achievement->fresh()->image_url);
+        \Illuminate\Support\Facades\Storage::disk('public')->assertMissing($storedPath);
     }
 
     public function test_available_excludes_achievements_the_user_already_has(): void

@@ -75,9 +75,15 @@ class AdminAchievementController extends Controller
             $updateData['type'] = $data['type'];
         }
         if ($request->hasFile('image')) {
+            // image = an actual file -> add/replace it.
             $this->deleteImageIfLocal($achievement->image_url);
             $updateData['image_url'] = $this->storeImage($request->file('image'));
+        } elseif ($request->has('image') && $request->input('image') === null) {
+            // image = "" (normalized to null by ConvertEmptyStringsToNull) -> remove it.
+            $this->deleteImageIfLocal($achievement->image_url);
+            $updateData['image_url'] = null;
         }
+        // image key absent entirely -> leave the current image untouched.
 
         if (! empty($updateData)) {
             $achievement->update($updateData);

@@ -214,37 +214,124 @@ class LiveKitWebhookController extends Controller
         } catch (\Throwable) {}
     }
 
+    /**
+     * LiveKit's egress_ended webhook — sets debate_phases.audio_url and kicks
+     * off transcription.
+     *
+     * PAYLOAD SHAPE (verified against the vendored protobuf definitions, which
+     * are generated from LiveKit's own .proto and are therefore authoritative):
+     *   WebhookEvent.egress_info          → field  9  (Livekit\WebhookEvent)
+     *     EgressInfo.egress_id            → field  1  (Livekit\EgressInfo)
+     *     EgressInfo.status               → field  3
+     *     EgressInfo.file_results         → field 16  (repeated Livekit\FileInfo)
+     *       FileInfo.filename             → field  1  — local path, e.g. /out/113/stage-1-30.mp3
+     *       FileInfo.location             → field  5  — upload location (cloud storage)
+     *
+     * This method previously read `$payload['egress_id']` and
+     * `$payload['file_results']` from the TOP level of the payload, where
+     * LiveKit never puts them — so $egressId was always null and the method
+     * silently returned at its first guard on every single webhook. That is
+     * exactly why production saw 200 OK responses, LiveKit logged "sent
+     * webhook", and yet audio_url stayed NULL with zero trace in laravel.log.
+     *
+     * It also looked for `outputs` and `download_url`, neither of which exists
+     * anywhere in the schema — `file_results` and `filename`/`location` are the
+     * real field names.
+     *
+     * Both snake_case and lowerCamelCase spellings are accepted at every level:
+     * protojson emits lowerCamelCase by default but LiveKit pins
+     * `UseProtoNames` in places, and it varies by version. Accepting both costs
+     * nothing and makes this immune to that difference.
+     */
     private function onEgressEnded(array $payload): void
     {
-        $egressId = $payload['egress_id'] ?? null;
+        $info = $payload['egress_info'] ?? $payload['egressInfo'] ?? [];
+
+        // Fall back to the top level too — harmless, and covers any proxy or
+        // future version that flattens the envelope.
+        $egressId = $this->firstFilled($info, ['egress_id', 'egressId'])
+            ?? $this->firstFilled($payload, ['egress_id', 'egressId']);
+
+        $status = $this->firstFilled($info, ['status']);
+
+        Log::info('LiveKit egress_ended received', [
+            'egress_id' => $egressId,
+            'status'    => $status,
+            'payload'   => $payload,
+        ]);
+
         if (! $egressId) {
+            Log::warning('LiveKit egress_ended: no egress_id found in payload — cannot match a phase', [
+                'payload_keys'      => array_keys($payload),
+                'egress_info_keys'  => is_array($info) ? array_keys($info) : null,
+                'payload'           => $payload,
+            ]);
+
             return;
         }
 
         $phase = DebatePhase::where('egress_id', $egressId)->first();
         if (! $phase) {
+            Log::warning('LiveKit egress_ended: no debate_phases row matches this egress_id', [
+                'searched_egress_id' => $egressId,
+                'hint'               => 'Compare against: SELECT id, debate_id, egress_id FROM debate_phases WHERE egress_id IS NOT NULL;',
+            ]);
+
             return;
         }
 
-        // Extract recording file path/URL from the payload.
-        $fileResults = $payload['file_results'] ?? $payload['outputs'] ?? [];
-        $audioUrl    = null;
+        $fileResults = $info['file_results'] ?? $info['fileResults']
+            ?? $payload['file_results'] ?? $payload['fileResults'] ?? [];
 
+        $audioUrl = null;
         foreach ($fileResults as $result) {
-            if (! empty($result['filename'])) {
-                $audioUrl = $result['filename'];
-                break;
-            }
-            if (! empty($result['download_url'])) {
-                $audioUrl = $result['download_url'];
+            // filename is the local path this deployment records to (egress
+            // writes into the bind-mounted /out); location is the cloud-upload
+            // equivalent, used only if filename is absent.
+            $audioUrl = $this->firstFilled($result, ['filename', 'location']);
+            if ($audioUrl) {
                 break;
             }
         }
 
-        if ($audioUrl) {
-            $phase->update(['audio_url' => $audioUrl]);
-            app(\App\Services\TranscriptionService::class)->dispatchBackgroundTranscription($phase);
+        if (! $audioUrl) {
+            Log::warning('LiveKit egress_ended: matched phase but no file path in the payload', [
+                'egress_id'    => $egressId,
+                'phase_id'     => $phase->id,
+                'debate_id'    => $phase->debate_id,
+                'status'       => $status,
+                'file_results' => $fileResults,
+            ]);
+
+            return;
         }
+
+        $phase->update(['audio_url' => $audioUrl]);
+
+        Log::info('LiveKit egress_ended: audio_url saved', [
+            'egress_id' => $egressId,
+            'phase_id'  => $phase->id,
+            'debate_id' => $phase->debate_id,
+            'audio_url' => $audioUrl,
+        ]);
+
+        app(\App\Services\TranscriptionService::class)->dispatchBackgroundTranscription($phase);
+    }
+
+    /** First non-empty value among $keys, or null. */
+    private function firstFilled(mixed $source, array $keys): mixed
+    {
+        if (! is_array($source)) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (! empty($source[$key])) {
+                return $source[$key];
+            }
+        }
+
+        return null;
     }
 
     private function onRoomFinished(array $payload): void

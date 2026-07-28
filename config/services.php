@@ -60,6 +60,12 @@ return [
         // debate_phases.audio_url value like "/out/113/stage-1-30.mp3" into
         // the real path this PHP process can read from disk.
         'recordings_base_path' => env('RECORDINGS_BASE_PATH', '/var/recordings'),
+        // Process timeouts (seconds) for the two shell-outs in the transcription
+        // pipeline. Env-overridable so a production timeout can be tuned without
+        // a code deploy; the effective value is logged whenever a step runs, so
+        // laravel.log always proves which limit was actually in force.
+        'ffmpeg_timeout' => (int) env('FFMPEG_TIMEOUT_SECONDS', 300),
+        'timeout'        => (int) env('WHISPER_TIMEOUT_SECONDS', 1800),
     ],
 
     'groq' => [

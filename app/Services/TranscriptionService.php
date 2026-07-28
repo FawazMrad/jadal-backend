@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DebatePhase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
@@ -26,9 +27,34 @@ use Illuminate\Support\Facades\Process;
  */
 class TranscriptionService
 {
+    /**
+     * Defaults only — the EFFECTIVE values come from config (env-overridable)
+     * so a production timeout can be tuned without a code deploy, and so the
+     * value actually in force is logged rather than assumed.
+     *
+     * Context: production has reported ffmpeg/whisper failing with
+     * "exceeded the timeout of 120 seconds". 120 is not a value this codebase
+     * has ever set — it appears nowhere in app/, config/, routes/, bootstrap/
+     * or database/ on any branch or in any commit, and it is not a Laravel
+     * (PendingProcess = 60) or Symfony (= null) default either. Logging the
+     * effective timeout at the moment it is applied is what distinguishes
+     * "the running code is not what the repo says" (stale deploy / stale
+     * opcache / uncommitted server edit) from "something outside PHP is
+     * killing the process".
+     */
     private const FFMPEG_TIMEOUT_SECONDS = 300;
     private const WHISPER_TIMEOUT_SECONDS = 1800;
     private const GROQ_TIMEOUT_SECONDS = 30;
+
+    private function ffmpegTimeout(): int
+    {
+        return (int) config('services.whisper.ffmpeg_timeout', self::FFMPEG_TIMEOUT_SECONDS);
+    }
+
+    private function whisperTimeout(): int
+    {
+        return (int) config('services.whisper.timeout', self::WHISPER_TIMEOUT_SECONDS);
+    }
 
     /** Dedupe the "no API key configured" warning within one process — matters for the batch backfill command, which may call this once per phase in a single run. */
     private static bool $missingGroqKeyWarned = false;
@@ -91,9 +117,23 @@ class TranscriptionService
 
             return 'succeeded';
         } catch (\Throwable $e) {
-            Log::error('Transcription failed — unexpected exception', $context + [
-                'error' => $e->getMessage(),
-            ]);
+            $detail = [
+                'error'          => $e->getMessage(),
+                'exception'      => $e::class,
+            ];
+
+            // A Symfony/Laravel process timeout reports the limit it enforced
+            // inside its message. If that number does NOT match the effective
+            // timeouts logged below, then the code actually executing is not
+            // this code — stale deploy, stale opcache, or an uncommitted edit
+            // on the server — and that is the thing to chase, not this file.
+            if ($e instanceof ProcessTimedOutException || str_contains($e->getMessage(), 'exceeded the timeout')) {
+                $detail['configured_ffmpeg_timeout']  = $this->ffmpegTimeout();
+                $detail['configured_whisper_timeout'] = $this->whisperTimeout();
+                $detail['diagnostic'] = 'If the timeout in the message above differs from BOTH configured values, the running code is not this file (stale deploy/opcache) or the process was killed by something outside PHP.';
+            }
+
+            Log::error('Transcription failed — unexpected exception', $context + $detail);
 
             return 'failed';
         } finally {
@@ -233,7 +273,14 @@ class TranscriptionService
 
     private function normalizeAudio(string $inputPath, string $outputPath, array $context): bool
     {
-        $result = Process::timeout(self::FFMPEG_TIMEOUT_SECONDS)->run([
+        $timeout = $this->ffmpegTimeout();
+        $startedAt = microtime(true);
+
+        Log::info('Transcription step: ffmpeg normalize starting', $context + [
+            'effective_timeout_seconds' => $timeout,
+        ]);
+
+        $result = Process::timeout($timeout)->run([
             'ffmpeg', '-y', '-i', $inputPath,
             '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
             $outputPath,
@@ -241,12 +288,18 @@ class TranscriptionService
 
         if (! $result->successful()) {
             Log::error('Transcription failed — ffmpeg normalization error', $context + [
-                'exit_code' => $result->exitCode(),
-                'error'     => trim($result->errorOutput()),
+                'exit_code'                 => $result->exitCode(),
+                'effective_timeout_seconds' => $timeout,
+                'elapsed_seconds'           => round(microtime(true) - $startedAt, 1),
+                'error'                     => trim($result->errorOutput()),
             ]);
 
             return false;
         }
+
+        Log::info('Transcription step: ffmpeg normalize finished', $context + [
+            'elapsed_seconds' => round(microtime(true) - $startedAt, 1),
+        ]);
 
         return true;
     }
@@ -254,8 +307,15 @@ class TranscriptionService
     private function runWhisper(string $normalizedPath, string $outputDir, array $context): bool
     {
         $whisperBin = (string) config('services.whisper.binary_path');
+        $timeout    = $this->whisperTimeout();
+        $startedAt  = microtime(true);
 
-        $result = Process::timeout(self::WHISPER_TIMEOUT_SECONDS)->run([
+        Log::info('Transcription step: whisper starting', $context + [
+            'effective_timeout_seconds' => $timeout,
+            'binary'                    => $whisperBin,
+        ]);
+
+        $result = Process::timeout($timeout)->run([
             $whisperBin, $normalizedPath,
             '--language', 'ar',
             '--output_format', 'json',
@@ -264,12 +324,18 @@ class TranscriptionService
 
         if (! $result->successful()) {
             Log::error('Transcription failed — Whisper error', $context + [
-                'exit_code' => $result->exitCode(),
-                'error'     => trim($result->errorOutput()),
+                'exit_code'                 => $result->exitCode(),
+                'effective_timeout_seconds' => $timeout,
+                'elapsed_seconds'           => round(microtime(true) - $startedAt, 1),
+                'error'                     => trim($result->errorOutput()),
             ]);
 
             return false;
         }
+
+        Log::info('Transcription step: whisper finished', $context + [
+            'elapsed_seconds' => round(microtime(true) - $startedAt, 1),
+        ]);
 
         return true;
     }

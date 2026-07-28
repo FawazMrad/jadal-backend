@@ -46,6 +46,71 @@ class TranscriptionService
     private const WHISPER_TIMEOUT_SECONDS = 1800;
     private const GROQ_TIMEOUT_SECONDS = 30;
 
+    /**
+     * Environment forced onto every subprocess in this pipeline so that NO
+     * library ever writes cache/model data into the running user's home
+     * directory.
+     *
+     * Why this exists: the pipeline runs as www-data, whose home is /var/www
+     * and is not writable. Whisper, PyTorch and huggingface_hub all default to
+     * `~/.cache/...`, so each library (and each new cache subdirectory a future
+     * version decides to create) became its own permission failure discovered
+     * only in production. Chowning them one at a time is unbounded work;
+     * redirecting the roots they derive every path from is not.
+     *
+     * The variables are deliberately redundant because these libraries do not
+     * agree on precedence, and it varies by version:
+     *   HOME                  — catch-all: anything doing ~/… lands here.
+     *   XDG_CACHE_HOME        — openai-whisper resolves its model dir as
+     *                           os.getenv('XDG_CACHE_HOME', ~/.cache)/whisper.
+     *   HF_HOME               — huggingface_hub's root (covers the newer xet
+     *                           cache, which sits under it).
+     *   HUGGINGFACE_HUB_CACHE — separate hub cache override, settable
+     *                           independently of HF_HOME on some versions.
+     *   TORCH_HOME            — PyTorch hub/model cache (~/.cache/torch).
+     *
+     * Symfony merges this over the parent environment rather than replacing it
+     * (Process.php: `$env += $this->getDefaultEnv()`, array union — our keys
+     * win, everything else is inherited), so PATH and friends are preserved.
+     */
+    private function subprocessEnv(): array
+    {
+        $cacheDir = storage_path('app/whisper-cache');
+
+        // Created by whichever user actually runs the pipeline — as www-data
+        // that means correct ownership from the start, on a fresh deployment,
+        // with no manual chown ever required. 0775 rather than 0755 so a
+        // deployment where an operator and www-data share a group still works
+        // if the directory happens to get created by the wrong user first.
+        File::ensureDirectoryExists($cacheDir, 0775, true);
+
+        // The one residual way this can still break: the directory already
+        // exists owned by a different user (e.g. created by a manual
+        // `php artisan debates:transcribe-phases` run as an admin account
+        // before the webhook path ever ran). Surface that as one actionable
+        // line instead of letting it resurface as an opaque Python traceback.
+        if (! is_writable($cacheDir)) {
+            Log::warning('Whisper cache directory is not writable by the current user — transcription will fail', [
+                'cache_dir'    => $cacheDir,
+                'current_user' => function_exists('posix_getpwuid') && function_exists('posix_geteuid')
+                    ? (posix_getpwuid(posix_geteuid())['name'] ?? null)
+                    : null,
+                'owner'        => function_exists('posix_getpwuid')
+                    ? (posix_getpwuid(fileowner($cacheDir))['name'] ?? null)
+                    : null,
+                'fix'          => "sudo chown -R www-data:www-data {$cacheDir}",
+            ]);
+        }
+
+        return [
+            'HOME'                  => $cacheDir,
+            'XDG_CACHE_HOME'        => $cacheDir,
+            'HF_HOME'               => $cacheDir,
+            'HUGGINGFACE_HUB_CACHE' => $cacheDir,
+            'TORCH_HOME'            => $cacheDir,
+        ];
+    }
+
     private function ffmpegTimeout(): int
     {
         return (int) config('services.whisper.ffmpeg_timeout', self::FFMPEG_TIMEOUT_SECONDS);
@@ -280,7 +345,12 @@ class TranscriptionService
             'effective_timeout_seconds' => $timeout,
         ]);
 
-        $result = Process::timeout($timeout)->run([
+        // ffmpeg does not itself need a redirected cache — it downloads no
+        // models and only ever READS ~/.ffmpeg (presets), which this pipeline
+        // does not use. The same environment is applied purely so both
+        // subprocesses are uniform and nothing in this pipeline can ever
+        // resolve a writable path through www-data's home directory.
+        $result = Process::env($this->subprocessEnv())->timeout($timeout)->run([
             'ffmpeg', '-y', '-i', $inputPath,
             '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
             $outputPath,
@@ -308,14 +378,18 @@ class TranscriptionService
     {
         $whisperBin = (string) config('services.whisper.binary_path');
         $timeout    = $this->whisperTimeout();
+        $env        = $this->subprocessEnv();
         $startedAt  = microtime(true);
 
         Log::info('Transcription step: whisper starting', $context + [
             'effective_timeout_seconds' => $timeout,
             'binary'                    => $whisperBin,
+            // Logged so a permission failure immediately shows WHERE the
+            // caches were pointed, instead of having to infer it.
+            'cache_dir'                 => $env['XDG_CACHE_HOME'],
         ]);
 
-        $result = Process::timeout($timeout)->run([
+        $result = Process::env($env)->timeout($timeout)->run([
             $whisperBin, $normalizedPath,
             '--language', 'ar',
             '--output_format', 'json',

@@ -226,13 +226,18 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::delete('/{notification}',         [NotificationController::class, 'destroy'])     ->name('destroy');
     });
 
-    // ── Teams — leave (any auth user, declared before trainer group) ──────────
+    // ── Teams — leave/join (any auth user, declared before trainer group) ──────
     Route::post('/teams/{team}/leave', [TeamController::class, 'leave'])
         ->name('teams.leave');
+    Route::post('/teams/{team}/join', [TeamController::class, 'join'])
+        ->name('teams.join');
+
+    // ── Teams — search/browse (admin: all, trainer: own, debater: joinable) ───
+    Route::middleware('role:admin,trainer,debater')->get('/teams', [TeamController::class, 'index'])
+        ->name('teams.index');
 
     // ── Teams — trainer management ────────────────────────────────────────────
     Route::middleware('role:admin,trainer')->prefix('teams')->name('teams.')->group(function (): void {
-        Route::get('/',          [TeamController::class, 'index'])->name('index');
         Route::post('/',         [TeamController::class, 'store'])->name('store');
         Route::get('/{team}',    [TeamController::class, 'show'])->name('show');
         Route::put('/{team}',    [TeamController::class, 'update'])->name('update');
@@ -244,6 +249,9 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
 
         Route::get('/{team}/leave-requests',                            [TeamController::class, 'leaveRequests'])->name('leave-requests.index');
         Route::patch('/{team}/leave-requests/{leaveRequest}/respond',   [TeamController::class, 'respondToLeave'])->name('leave-requests.respond');
+
+        Route::get('/{team}/join-requests',                           [TeamController::class, 'joinRequests'])->name('join-requests.index');
+        Route::patch('/{team}/join-requests/{joinRequest}/respond',   [TeamController::class, 'respondToJoin'])->name('join-requests.respond');
     });
 
     // ── Trainer surveys ───────────────────────────────────────────────────────

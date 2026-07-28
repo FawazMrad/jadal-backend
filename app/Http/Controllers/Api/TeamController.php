@@ -6,12 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Team\AddMembersRequest;
 use App\Http\Requests\Team\CreateTeamRequest;
 use App\Http\Requests\Team\ReorderPriorityRequest;
+use App\Http\Requests\Team\RespondJoinRequest;
 use App\Http\Requests\Team\RespondLeaveRequest;
 use App\Http\Requests\Team\UpdateTeamRequest;
 use App\Http\Requests\SearchListRequest;
+use App\Http\Resources\TeamJoinRequestResource;
 use App\Http\Resources\TeamLeaveRequestResource;
 use App\Http\Resources\TeamResource;
 use App\Models\Team;
+use App\Models\TeamJoinRequest;
 use App\Models\TeamLeaveRequest;
 use App\Models\TeamMember;
 use App\Models\User;
@@ -42,6 +45,23 @@ class TeamController extends Controller
         // Trainer can see only his own teams
         else if ($user->role === 'trainer') {
             $teams = $query->where('created_by', $user->id)
+                ->latest()
+                ->get();
+        }
+        // Debater: search/browse teams to request joining. Only active,
+        // non-random teams they are NOT already a current member of — this is
+        // a "find a team" list, not a management view, so teams they're
+        // already on (and ad-hoc per-debate random teams, which aren't
+        // something you register into) are excluded regardless of any
+        // is_random/status filter passed in.
+        else if ($user->role === 'debater') {
+            $currentTeamIds = TeamMember::where('user_id', $user->id)
+                ->where('status', 'current')
+                ->pluck('team_id');
+
+            $teams = $query->where('status', 'active')
+                ->where('is_random', false)
+                ->whereNotIn('id', $currentTeamIds)
                 ->latest()
                 ->get();
         }
@@ -465,6 +485,165 @@ class TeamController extends Controller
             : 'تم رفض طلب المغادرة. | Leave request rejected.';
 
         return $this->success(new TeamLeaveRequestResource($leaveRequest), $message);
+    }
+
+    // ── Debater: request to join a team (creates pending request for trainer) ──
+
+    public function join(Request $request, Team $team): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->role !== 'debater') {
+            return $this->error(
+                'فقط المتناظرون يمكنهم طلب الانضمام لفريق. | Only debaters can request to join a team.',
+                [],
+                403
+            );
+        }
+
+        if ($team->is_random) {
+            return $this->error(
+                'لا يمكن الانضمام إلى فريق عشوائي. | Cannot register to join a random/ad-hoc team.',
+                [],
+                422
+            );
+        }
+
+        if ($team->status !== 'active') {
+            return $this->error(
+                'لا يمكن الانضمام إلى فريق غير مفعل. | Cannot join an inactive team.',
+                [],
+                422
+            );
+        }
+
+        $alreadyMember = TeamMember::where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'current')
+            ->exists();
+
+        if ($alreadyMember) {
+            return $this->error(
+                'أنت عضو حالي بالفعل في هذا الفريق. | You are already a current member of this team.',
+                [],
+                409
+            );
+        }
+
+        $existing = TeamJoinRequest::where('team_id', $team->id)
+            ->where('user_id', $user->id)
+            ->where('status', 'pending')
+            ->exists();
+
+        if ($existing) {
+            return $this->error(
+                'لديك طلب انضمام معلق بانتظار موافقة المدرب. | You already have a pending join request awaiting trainer approval.',
+                [],
+                409
+            );
+        }
+
+        $joinRequest = TeamJoinRequest::create([
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'status'  => 'pending',
+            'reason'  => $request->input('reason'),
+        ]);
+
+        // TODO: send notification to trainer ($team->createdBy)
+
+        return $this->success(
+            new TeamJoinRequestResource($joinRequest),
+            'تم إرسال طلب الانضمام. في انتظار موافقة المدرب. | Join request submitted. Awaiting trainer approval.'
+        );
+    }
+
+    // ── Trainer: list join requests for a team ────────────────────────────────
+
+    public function joinRequests(SearchListRequest $request, Team $team): JsonResponse
+    {
+        if (! $this->ownsTeam($request, $team)) {
+            return $this->error('غير مصرح. | Unauthorized.', [], 403);
+        }
+
+        $requests = TeamJoinRequest::where('team_id', $team->id)
+            ->with('user')
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = $request->input('search');
+                $q->where('reason', 'LIKE', "%{$term}%");
+            })
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return $this->success(
+            TeamJoinRequestResource::collection($requests),
+            'تم جلب طلبات الانضمام. | Join requests retrieved.'
+        );
+    }
+
+    // ── Trainer: accept or reject a join request ──────────────────────────────
+
+    public function respondToJoin(RespondJoinRequest $request, Team $team, TeamJoinRequest $joinRequest): JsonResponse
+    {
+        if (! $this->ownsTeam($request, $team)) {
+            return $this->error('غير مصرح. | Unauthorized.', [], 403);
+        }
+
+        if ($joinRequest->team_id !== $team->id) {
+            return $this->error(
+                'طلب الانضمام لا ينتمي لهذا الفريق. | Join request does not belong to this team.',
+                [],
+                404
+            );
+        }
+
+        if ($joinRequest->status !== 'pending') {
+            return $this->error(
+                'تم الرد على هذا الطلب مسبقاً. | This request has already been responded to.',
+                [],
+                409
+            );
+        }
+
+        DB::transaction(function () use ($request, $team, $joinRequest) {
+            $joinRequest->update([
+                'status'       => $request->status,
+                'responded_at' => now(),
+            ]);
+
+            if ($request->status === 'accepted') {
+                // Same "brand-new vs re-activate a past row" pattern as addMembers().
+                $existingMembership = TeamMember::where('team_id', $team->id)
+                    ->where('user_id', $joinRequest->user_id)
+                    ->first();
+
+                $maxPriority = TeamMember::where('team_id', $team->id)
+                    ->where('status', 'current')
+                    ->max('priority') ?? 0;
+
+                if ($existingMembership) {
+                    $existingMembership->update(['status' => 'current', 'priority' => $maxPriority + 1]);
+                } else {
+                    TeamMember::create([
+                        'team_id'  => $team->id,
+                        'user_id'  => $joinRequest->user_id,
+                        'priority' => $maxPriority + 1,
+                        'status'   => 'current',
+                    ]);
+                }
+
+                // TODO: notify user — join accepted
+            }
+            // TODO: notify user — join rejected
+        });
+
+        $joinRequest->load('user');
+
+        $message = $request->status === 'accepted'
+            ? 'تمت الموافقة على طلب الانضمام. | Join request accepted.'
+            : 'تم رفض طلب الانضمام. | Join request rejected.';
+
+        return $this->success(new TeamJoinRequestResource($joinRequest), $message);
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────

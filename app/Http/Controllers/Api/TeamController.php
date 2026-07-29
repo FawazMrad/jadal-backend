@@ -182,15 +182,25 @@ class TeamController extends Controller
 
     // ── Show single team ──────────────────────────────────────────────────────
 
+    /**
+     * Single-team detail — same payload as one item of GET /teams.
+     *
+     * Readable by anyone with a legitimate stake in the team: the trainer who
+     * created it, its leader, or a current member. This is deliberately WIDER
+     * than ownsTeam() (created_by only), which still guards every write
+     * endpoint below — a member may read their own team, not edit it.
+     *
+     * A non-existent id 404s via route-model binding before this runs.
+     */
     public function show(Request $request, Team $team): JsonResponse
     {
-        if (! $this->ownsTeam($request, $team)) {
+        if (! $this->canViewTeam($request, $team)) {
             return $this->error('غير مصرح. | Unauthorized.', [], 403);
         }
 
         $team->load(['leader', 'createdBy', 'teamMembers.user']);
 
-        return $this->success(new TeamResource($team), 'تم جلب بيانات الفريق. | Team retrieved.');
+        return $this->success(new TeamResource($team), 'تم جلب الفريق. | Team retrieved.');
     }
 
     // ── FR-29: Update team name or leader ─────────────────────────────────────
@@ -648,8 +658,33 @@ class TeamController extends Controller
 
     // ── Private Helpers ───────────────────────────────────────────────────────
 
+    /** Write access: only the trainer who created the team. */
     private function ownsTeam(Request $request, Team $team): bool
     {
         return $team->created_by === $request->user()->id;
+    }
+
+    /**
+     * Read access to a team's detail: the trainer who created it, its leader,
+     * or a current member. Strictly wider than ownsTeam() — reading a roster
+     * you belong to is not the same right as editing it.
+     *
+     * The leader is normally also a current member (store() creates that row),
+     * so the leader_id check is belt-and-braces against data drift — e.g. a
+     * leader whose membership row was flipped to 'past' by a bad edit would
+     * still be able to see the team they lead.
+     */
+    private function canViewTeam(Request $request, Team $team): bool
+    {
+        $userId = (int) $request->user()->id;
+
+        if ((int) $team->created_by === $userId || (int) $team->leader_id === $userId) {
+            return true;
+        }
+
+        return TeamMember::where('team_id', $team->id)
+            ->where('user_id', $userId)
+            ->where('status', 'current')
+            ->exists();
     }
 }

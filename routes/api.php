@@ -232,6 +232,15 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     Route::post('/teams/{team}/join', [TeamController::class, 'join'])
         ->name('teams.join');
 
+    // Single-team detail. Deliberately OUTSIDE the trainer-only group below:
+    // a debater viewing their own team (or a team found via search) needs this
+    // too, so the role gate would reject them before the controller ever ran.
+    // Authorization is therefore done in the controller — trainer who created
+    // it, the leader, or a current member. Declared after /teams/options so
+    // that literal path is never swallowed by the {team} placeholder.
+    Route::get('/teams/{team}', [TeamController::class, 'show'])
+        ->name('teams.show');
+
     // ── Teams — search/browse (admin: all, trainer: own, debater: joinable) ───
     Route::middleware('role:admin,trainer,debater')->get('/teams', [TeamController::class, 'index'])
         ->name('teams.index');
@@ -239,7 +248,8 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── Teams — trainer management ────────────────────────────────────────────
     Route::middleware('role:admin,trainer')->prefix('teams')->name('teams.')->group(function (): void {
         Route::post('/',         [TeamController::class, 'store'])->name('store');
-        Route::get('/{team}',    [TeamController::class, 'show'])->name('show');
+        // NOTE: GET /teams/{team} is declared above, outside this group — it is
+        // readable by the team's members, not just admin/trainer.
         Route::put('/{team}',    [TeamController::class, 'update'])->name('update');
         Route::delete('/{team}', [TeamController::class, 'destroy'])->name('destroy');
 

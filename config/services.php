@@ -48,6 +48,14 @@ return [
         // egress). The SDK's default HTTP client has NO timeout, so a stuck
         // LiveKit server previously hung until PHP-FPM/Nginx killed the request.
         'http_timeout' => env('LIVEKIT_HTTP_TIMEOUT', 8),
+        // A debater can publish their mic in the same instant the chair calls
+        // next-stage, so the mic track may not exist server-side yet when we
+        // look it up. Retry briefly rather than failing the stage advance.
+        // Worst case added wait = (attempts - 1) * delay = 4 * 400ms = 1.6s,
+        // and it is ZERO in the common case where the mic is already published
+        // (the loop returns on the first attempt without ever sleeping).
+        'mic_track_attempts'       => (int) env('LIVEKIT_MIC_TRACK_ATTEMPTS', 5),
+        'mic_track_retry_delay_ms' => (int) env('LIVEKIT_MIC_TRACK_RETRY_DELAY_MS', 400),
     ],
 
     'whisper' => [

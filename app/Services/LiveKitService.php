@@ -266,17 +266,81 @@ class LiveKitService
      * startTrackCompositeEgress, which targets tracks by SID rather than
      * capturing a whole participant.
      */
+    /**
+     * Resolve the SID of a participant's microphone track, retrying briefly.
+     *
+     * Confirmed against LiveKit's own server logs: a debater can publish their
+     * mic in the same second the chair calls next-stage, so the track can be
+     * genuinely absent server-side at the moment of the first lookup. Failing
+     * immediately turns that timing window into a lost stage recording, so the
+     * lookup is retried a bounded number of times.
+     *
+     * Cost in the common case (mic already published) is ZERO added latency:
+     * the loop returns on the first attempt and only ever sleeps AFTER a miss,
+     * never after the final attempt. Worst case is (attempts - 1) * delay —
+     * 1.6s at the defaults.
+     *
+     * NOTE: this only closes the millisecond-scale race. The frontend joins
+     * every participant muted and publishes a mic track only on a manual tap,
+     * so a speaker who has not yet unmuted is an UNBOUNDED wait that no retry
+     * can cover — that case needs a gate before next-stage, not a longer
+     * timeout here.
+     */
     private function findMicrophoneTrackId(string $roomName, string $identity): string
     {
-        $participant = $this->roomServiceClient()->getParticipant($roomName, $identity);
+        // Floors guarantee the loop always runs at least once and never sleeps
+        // a negative duration, even if these are misconfigured.
+        $attempts = max(1, (int) config('services.livekit.mic_track_attempts', 5));
+        $delayMs  = max(0, (int) config('services.livekit.mic_track_retry_delay_ms', 400));
 
-        foreach ($participant->getTracks() as $track) {
-            if ($track->getSource() === TrackSource::MICROPHONE) {
+        $context = ['room' => $roomName, 'identity' => $identity];
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            $participant = $this->roomServiceClient()->getParticipant($roomName, $identity);
+
+            foreach ($participant->getTracks() as $track) {
+                if ($track->getSource() !== TrackSource::MICROPHONE) {
+                    continue;
+                }
+
+                if ($attempt === 1) {
+                    Log::debug('Microphone track found on first attempt', $context);
+                } else {
+                    // Info, not debug: reaching here means the race is real and
+                    // recurring in production, and that we recovered from it.
+                    Log::info('Microphone track found after retrying', $context + [
+                        'attempt'   => $attempt,
+                        'waited_ms' => ($attempt - 1) * $delayMs,
+                    ]);
+                }
+
                 return $track->getSid();
+            }
+
+            // Never sleep after the last attempt — that is dead time added to a
+            // call that is about to throw anyway.
+            if ($attempt < $attempts) {
+                Log::debug('Microphone track not published yet — retrying', $context + [
+                    'attempt'     => $attempt,
+                    'of_attempts' => $attempts,
+                    'retry_in_ms' => $delayMs,
+                ]);
+
+                usleep($delayMs * 1000);
             }
         }
 
-        throw new \RuntimeException("No microphone audio track found for participant {$identity} in room {$roomName}.");
+        $waitedMs = ($attempts - 1) * $delayMs;
+
+        Log::warning('Microphone track never appeared — giving up', $context + [
+            'attempts'  => $attempts,
+            'waited_ms' => $waitedMs,
+        ]);
+
+        throw new \RuntimeException(
+            "No microphone audio track found for participant {$identity} in room {$roomName} "
+            . "after {$attempts} attempts over ~{$waitedMs}ms."
+        );
     }
 
     /**

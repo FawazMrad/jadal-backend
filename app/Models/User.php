@@ -27,7 +27,6 @@ class User extends Authenticatable
         'points',
         'birth_date',
         'location',
-        'stats_visible',
         'livekit_token',
     ];
 
@@ -43,7 +42,6 @@ class User extends Authenticatable
             'password'          => 'hashed',
             'points'            => 'integer',
             'birth_date'        => 'date',
-            'stats_visible'     => 'boolean',
             'role'              => 'string',
             'status'            => 'string',
         ];

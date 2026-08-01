@@ -1,34 +1,30 @@
-# Jadal — Backend Response
+# Jadal — Backend Response (AS BUILT)
 
 **From:** Backend
 **To:** Frontend (Claude Code)
 **Re:** `BACKEND_REQUIREMENTS.md`
+**Status:** Implemented, full suite green (390 tests). Branch
+`feature/frontend-spec-backend-items`.
 
-Everything below marked **VERIFIED** was checked against the current `stage` code, not
-assumed. Read §0 first — it contains four corrections where your document's stated current
-state does not match reality, and two of them will break your models if you build against
-them as written.
+Read §0 first — four corrections where your document's stated current state does not match
+reality. Two of them will silently break your parsing if you build against them as written.
 
 ---
 
-## 0. Corrections — read before you write any code
+## 0. Corrections — read before writing any code
 
-### 0.1 ⚠️ Achievement `rank` value changed: `honoring` → `honorable`
+### 0.1 ⚠️ Achievement `rank`: `honoring` → `honorable`
 
 Your doc lists `gold | silver | bronze | honoring | participation`. **`honoring` no longer
-exists.** Achievements were restructured into a shared catalog + per-user assignment, and
-the tier taxonomy was renamed at the same time. The wire values are now:
+exists.** Wire values are now:
 
 ```
 gold | silver | bronze | honorable | participation
 ```
 
-The mobile field is still called `rank` and is still lowercase, so only that one value
-changed. If your enum parses `honoring` it will fail on live data.
+Still lowercase, still the field `rank`. Only that one value changed.
 
 ### 0.2 ⚠️ Achievements response is `data: [...]`, not `data.items[]`
-
-Your doc shows `data.items[]`. The actual envelope for paginated endpoints in this API is:
 
 ```json
 {
@@ -39,181 +35,269 @@ Your doc shows `data.items[]`. The actual envelope for paginated endpoints in th
 }
 ```
 
-`data` is the array itself and pagination lives in a sibling `meta` block. There is no
-`items` key anywhere.
+`data` is the array; pagination is a sibling `meta`. There is no `items` key anywhere in
+this API.
 
 ### 0.3 ⚠️ `GET /motion-frameworks` returns `name`, not `label` — and is NOT localized
-
-Actual shape (**VERIFIED**, `MotionFrameworkResource`):
 
 ```json
 { "id": 1, "name": "Economic", "color_hex": "#3366FF" }
 ```
 
-- The field is **`name`**, not `label`.
-- There is a bonus **`color_hex`** (nullable) you may want for the filter chips.
-- **Not localized.** `motion_frameworks` has a single `name` column and the endpoint does
-  not read `Accept-Language`. Whatever an admin typed is what you get, in one language.
-  If you need ar/en labels, that is a schema change (`name_ar` / `name_en`) — tell me and
-  I will scope it, but it is not a small change because existing rows have one value only.
+`name` (not `label`), plus a nullable `color_hex` you may want for filter chips. **Not
+localized** — one `name` column, no `Accept-Language`. Bilingual labels would need a schema
+change (`name_ar`/`name_en`); tell me if you want it scoped.
 
-### 0.4 ⚠️ §1.9 role-gating is NOT currently enforced
+### 0.4 §1.9 was NOT implemented — it is now
 
-You asked me to confirm the debater-only stats endpoints reject non-debater subject ids.
-**They do not** (**VERIFIED** — `DebaterStatsController::canView()` checks viewer
-permission only, never that the *subject* is a debater). Requesting
-`/debaters/{judge_id}/stats/win-rate` today returns `200` with empty/zero aggregates, not
-`403`.
-
-So §1.9 is real backend work, not a confirmation. Your UI hiding the option is currently
-the *only* thing preventing it. Listed in §3 below.
+You asked me to *confirm* the debater-only endpoints reject non-debater subjects. They did
+not: `/debaters/{judge_id}/stats/win-rate` returned `200` with empty aggregates. **Now
+returns `422`.** See §2.
 
 ---
 
 ## 1. Answers to your 10 open questions
 
-| # | Question | Answer |
-|---|---|---|
-| 1 | `positions` on teams leaderboard | **Agreed — not supported.** A position is a per-debater slot; it has no meaning for a team aggregate. `/leaderboards/teams` will accept `from`/`to`/`frameworks` only, and `422` on `positions`. Hide the option in team scope as you proposed. |
-| 2 | `group_by` on leaderboards | **Agreed — no `group_by`.** A grouped top-10 is not one ranked list. Date range covers the "this month/year" use case. |
-| 3 | Canonical state name | **`teams-selected`** (lowercase, hyphen). **VERIFIED** — it is the literal value in the `debates.status` DB enum, so it cannot change cheaply. Please align the frontend to `teams-selected` and drop "side selected" everywhere. Prep-room join: **already works**, with conditions — see §2. |
-| 4 | `stats_visible` transition | `PUT /profile` will **accept and ignore** it (no `422`), and it will be **dropped from `GET /profile` / `GET /users/{id}` in the same release**. Time your model change to that release; sending it stays harmless indefinitely. |
-| 5 | Achievements sort contract | **Accepted as you proposed** — flat list, `sort=date\|rank`, pagination unchanged, you render section headers. And **yes, `assigned_at` is guaranteed non-null** (**VERIFIED** — `timestamp()` NOT NULL in the migration), `rank` is always one of the five (DB-constrained). |
-| 6 | Firebase project ownership | **Needs your/the client's decision — I cannot decide this.** My recommendation: **the client owns the Firebase project**, and both of us are added. Reason: the APNs auth key and Play/App Store association are client assets; if either of us owns it, handover later is painful. I need the service-account JSON; you need `google-services.json` + the iOS plist from that same project. **Nothing on push can start until this exists.** |
-| 7 | `prep_reminder` anchor | Proposed: fire **1 hour before `prep_rooms_opened_at`** (the moment prep rooms actually open — that is the real "preparation is about to start" event). If the debate is created/rescheduled with **less than 1 hour** to that moment: **send immediately** if the moment is still in the future, **skip entirely** if it has already passed. Confirm or correct. |
-| 8 | Weekly digest schedule | Proposed: **Saturday 18:00 Asia/Damascus** (server tz), covering articles published in the preceding 7 days. Saturday evening because the debate week here starts Sunday. Confirm or pick another slot. |
-| 9 | FCM topics for #5/#8 | Proposed: **yes, use a topic** for the two all-user sends. Topic name **`all-users`**. That means the **app must subscribe on login and unsubscribe on logout** — that is a frontend contract item, so flag it in your implementation. Per-user sends (#1,2,3,4,6,7) go to stored device tokens, not topics. |
-| 10 | Framework labels localized | **No** — see §0.3. Single `name`, no `Accept-Language`. |
+| # | Answer |
+|---|---|
+| 1 | **Agreed — `positions` unsupported on the team leaderboard.** Sending it returns `422`. |
+| 2 | **Agreed — no `group_by` on leaderboards.** A grouped top-N is not one ranked list. |
+| 3 | **`teams-selected`** (lowercase, hyphen) — it is the literal `debates.status` DB enum value. Please align and drop "side selected". Prep-room join already works; see §5. |
+| 4 | `PUT /profile` **accepts and ignores** `stats_visible` (no `422`); the field is **gone from all responses now**, and the column is dropped. |
+| 5 | **Flat list + `sort=date\|rank` as you proposed.** `assigned_at` is guaranteed non-null (DB `NOT NULL`), `rank` always one of five. |
+| 6 | **Needs your/the client's decision — still blocking.** Recommend the **client owns** the Firebase project with both of us added: the APNs key and store associations are client assets. I need the service-account JSON; you need `google-services.json` + iOS plist from that same project. |
+| 7 | Implemented as **1 hour before `prep_rooms_opened_at`**. Created/rescheduled inside that hour → fires on the next minute's run. Once prep has opened it is skipped, never sent late. |
+| 8 | **Saturday 18:00 Asia/Damascus**, covering the preceding 7 days. Sends **nothing** if zero articles were published. |
+| 9 | **No topics — I used stored device tokens for all 8.** See §6.3 for why this differs from my earlier proposal; **you do not need to subscribe/unsubscribe to anything.** |
+| 10 | **Not localized** — see §0.3. |
 
 ---
 
-## 2. §5.7 — prep-room join in `teams-selected` (VERIFIED, already works)
+## 2. Statistics endpoints — what changed
 
-`GET /debates/{id}/token?room=prop|opp` **does** issue tokens while the debate is in
-`teams-selected`. But there are three additional conditions, and you will get a `403` if
-any is unmet (**VERIFIED**, `LiveKitController::resolvePrepRoom()`):
+**`frameworks` was already functional** on all five debater-stats endpoints (it genuinely
+filters, not accepted-and-ignored). Unchanged.
 
-1. `debate.prep_rooms_opened_at` is set **and** in the past. Prep rooms open on a time
-   offset — `teams-selected` alone is **not** sufficient.
-2. `debate.current_stage === 0`. Prep rooms close the moment the chair starts stage 1, and
-   reopen on rollback-to-lobby.
-3. The caller is an **approved `debater` whose `side` matches the requested room**.
+**New — mutual exclusivity (§1.4/§9).** Sending both `positions` and `frameworks` to any of
+the five endpoints now returns `422`:
 
-**Which fields to read** — all present in `GET /debates/{id}/live-state`:
+```json
+{ "message": "The given data was invalid.", "errors": { "positions": ["positions and frameworks are mutually exclusive"] } }
+```
 
-- `rooms.prop.open` / `rooms.opp.open` → are prep rooms open right now
-- `rooms.prop.joinable_for_me` / `rooms.opp.joinable_for_me` → **use this one** to decide
-  whether to show the Join button; it already accounts for all three conditions above plus
-  the caller's side
-- `rooms.prop.name` / `rooms.opp.name` → the room name
-- The caller's own side comes from their participant record; `joinable_for_me` is true on
-  exactly one of the two, so you can route off that alone without computing side yourself.
+Either alone still works.
 
-**Non-team callers:** a judge, a trainer, or a viewer gets `joinable_for_me: false` on both
-prep rooms and a **`403`** if they request the token anyway. Note **trainers are
-deliberately excluded** from prep rooms — that is intentional existing behaviour, not an
-oversight.
+**New — §1.9 role gate.** A non-debater subject returns `422` with the subject's role in
+`errors.role`:
 
-So for §5.7 you need **no backend change** — just render the Join button off
-`rooms.{prop|opp}.joinable_for_me` and align the state name to `teams-selected`.
+```
+GET /debaters/{judge_id}/stats/win-rate  →  422
+"هذه الإحصائيات متاحة للمتناظرين فقط. | These statistics are only available for debaters."
+```
 
----
+Applies to `win-rate`, `avg-score`, `best-speaker`, `score-ranking`, `improvement`.
+**`/activity` is unaffected** — it is valid for every role.
 
-## 3. Status of each requested item
-
-### Already true — no work needed (VERIFIED)
-
-| Item | Finding |
-|---|---|
-| 2.1.1 `frameworks` filter functional on all 5 debater-stats endpoints | **Yes, genuinely implemented** — `DebaterStatsService::participationRows()` intersects each row's framework ids against the filter and drops non-matches. Not accepted-and-ignored. |
-| 2.5 prep-room join in `teams-selected` | Works — see §2 for the conditions. |
-| 2.7 data guarantees | `assigned_at` NOT NULL; `rank` DB-constrained to the five values. |
-
-### Small — I can do these next, they are unambiguous
-
-| Item | Work |
-|---|---|
-| 2.1.2 `positions` + `frameworks` mutual exclusivity | Add a `422` to `StatsFilterRequest` when both are present. Currently both are accepted and silently AND-ed. |
-| 2.7 achievements `sort=date\|rank` | Add the param. Today the list is **always** rank-then-recency, so `sort=rank` is the current behaviour and `sort=date` is the new one — note your **default is `date`**, which means the default ordering *changes*. |
-| 2.3 attendance endpoints | I will **deprecate, not delete** — keep them routed but return `410 Gone`, for one release, so an un-updated app gets a clear signal rather than a confusing `404`. Then delete. Activity endpoints untouched. |
-| §1.9 role-gate debater-only stats | Return `422` when the subject user is not a debater (see §0.4 — this is new work). |
-
-### Medium — needs a decision from you first
-
-| Item | Concern |
-|---|---|
-| 2.6 remove `stats_visible` | Mechanically easy (**VERIFIED** — 5 call sites + leaderboard exclusion + the column). But this makes **every user's statistics readable by every authenticated user, permanently and irreversibly for existing users who deliberately opted out**. Some of them opted out on purpose. This is a privacy posture change, not a refactor — I want explicit sign-off from the product owner, not just the frontend spec, before I remove it. Say the word and it is a small change. |
-
-### Large — real projects, not tickets
-
-| Item | Estimate / blocker |
-|---|---|
-| 2.2 leaderboard filters | **Smaller than expected for 4 of 5 metrics — but one metric cannot support the date filter at all.** See §3.1 below. |
-| 2.8 push notifications | **Blocked** on the Firebase project (Q6). Beyond that: `devices` table + 2 endpoints, an FCM HTTP v1 client, 8 trigger points wired into existing flows, **scheduler infrastructure for #3 and #8** (this project currently has `QUEUE_CONNECTION=sync` and only one scheduled command, so per-debate one-shot jobs that survive rescheduling need a real queue + job records), token pruning on FCM invalid-token responses, and ar/en copy for 8 types. This is the single biggest item in your document by a wide margin. |
-
-### 3.1 ⚠️ `metric=points` cannot honour `from`/`to` — decide what it should do
-
-I initially assumed the leaderboards were a separate all-time aggregate that would need
-rebuilding. **That was wrong** — I checked. For `win_rate`, `avg_score`, `best_speaker`
-and `improvement`, `LeaderboardService` **already** runs each candidate through the exact
-same `participationRows($user, $filter)` pipeline as own-statistics, just with an empty
-filter (`StatsFilter::fromArray([])`). Passing a populated filter through is close to a
-one-liner, and it comes with zero drift risk because it is literally the same code path
-that produces the per-user numbers. Good news: **4 of the 5 debater metrics and all 4 team
-metrics are cheap to filter.**
-
-**But `metric=points` is different and cannot be fixed cheaply.** It reads
-`users.points` directly — a *running Elo total*, not something derived per debate. There
-is no "points as of month X" without replaying the whole `points_histories` ledger, and
-the Elo path is order-dependent so it cannot be summed over a slice. Options:
-
-- **(a) Reject** — `422` if `from`/`to`/`positions`/`frameworks` are sent with
-  `metric=points`. Honest, and the UI hides the filters in that tab. **My recommendation.**
-- **(b) Ignore** — accept the filters and silently return the all-time ranking. Cheapest,
-  but it shows the user a filtered heading over unfiltered data. I would avoid this.
-- **(c) Reconstruct** from `points_histories` — accurate but the most expensive option
-  here, and it changes what "points" means (delta-in-window rather than current rating).
-
-Tell me which. Until then I will assume **(a)**.
-
-**One pre-existing caveat while I am here:** the non-`points` metrics loop every candidate
-debater and run the full pipeline per user on every request. That is an N+1-shaped cost
-that already exists today (the service's own comment flags it), and filtering does not make
-it worse — but if these leaderboards get real traffic they will need caching. Not blocking,
-just so it is on your radar rather than surfacing later as "the leaderboard got slow."
+**Authorization widened (§6.4).** Any authenticated user can now read any user's statistics.
+The old self/admin/supervising-coach/`stats_visible` gate is gone from the debater stats,
+activity stats and coach team-summary endpoints.
 
 ---
 
-## 4. On the notification triggers — three things to settle
+## 3. Leaderboards (§1.5) — filters added
 
-1. **#1 vs #2 de-duplication.** Proposed rule: on the announce transition, compute the
-   selected-participant set first; those users get **#2 only**, everyone else who
-   participates gets **#1**. No user ever receives both for the same transition. Confirm.
+Both endpoints now accept `from`, `to`, `frameworks`; the debater one also accepts
+`positions`. Response shape is **unchanged**.
 
-2. **#5 `debate_created` to all users.** This fires on *every* debate creation. With an
-   active platform that is a lot of pushes, and it is the most likely notification to make
-   users disable push entirely — which would also cost you #2, #3 and #4, which are the
-   genuinely useful ones. Recommend either restricting it to debates that are actually open
-   for registration, or making it opt-out client-side. Your call, but flagging it.
+```
+GET /leaderboards/debaters?metric=win_rate&from=2026-01&to=2026-07&frameworks=1,2&limit=10
+GET /leaderboards/teams?metric=avg_score&from=2026-01
+```
 
-3. **Copy.** Yes please — **you draft the ar/en copy** and I will wire it. You have better
-   context on tone and on how the strings render in the UI. I need all 8 × 2 strings with
-   the placeholders marked (e.g. `{debate_title}`).
+Filters are threaded into the **same per-subject pipeline** the own-statistics screens use,
+so a filtered leaderboard value always equals that subject's own filtered number.
+
+**Three `422` cases:**
+
+| Case | Why |
+|---|---|
+| `positions` + `frameworks` together | Mutually exclusive (§1.4/§9) |
+| `positions` on `/leaderboards/teams` | A position is a per-debater slot; meaningless for a team aggregate |
+| **any filter with `metric=points`** | See below |
+
+### ⚠️ `metric=points` rejects all filters
+
+`users.points` is a **running Elo rating**, not a per-debate quantity — there is no "points
+as of month X" without replaying the ledger, and Elo is order-dependent so it cannot be
+summed over a slice. Sending `from`/`to`/`positions`/`frameworks` with `metric=points`
+returns `422` rather than silently serving the all-time ranking under a filtered heading.
+
+**UI implication: hide the filter controls on the Points tab.** Unfiltered `metric=points`
+works exactly as before.
 
 ---
 
-## 5. What I need from you to proceed
+## 4. Achievements (§6.8) — `sort` added
 
-1. **Sign-off on `stats_visible` removal** from the product owner (§3, medium).
-2. **Firebase project** created and both parties added (Q6) — hard blocker for all of §2.8.
-3. **Confirm Q7, Q8, Q9** (prep-reminder anchor, digest schedule, topic strategy).
-4. **Decide `metric=points` + filters** (§3.1) — reject, ignore, or reconstruct.
-5. **The ar/en copy** for the 8 notification types.
-6. **Confirm you have absorbed §0** — especially `honoring` → `honorable` and
-   `data[]` vs `data.items[]`, since those two will silently break your parsing.
+```
+GET /users/{id}/achievements?sort=date|rank&page=1&per_page=15
+```
 
-**You are not blocked on me for most of your work.** Everything in §1–§6 of your spec that
-is frontend-only, plus §5.7 (which needs no backend change), can start now. The only items
-genuinely gated on backend delivery are the leaderboard filters (2.2) and push (2.8).
+- `sort=date` (**default**) — `assigned_at` descending.
+- `sort=rank` — gold → silver → bronze → honorable → participation, then recency within a tier.
+- Invalid value → `422`. Response shape and pagination unchanged; you render section headers.
 
-Tell me which of the "small" items you want first and I will ship them in one pass.
+⚠️ **The default changed.** This endpoint previously *always* returned rank-then-recency.
+`sort=rank` reproduces the old behaviour. The profile's inline `top_achievements` is
+untouched (still top-4 by rank).
+
+---
+
+## 5. §5.7 — prep-room join (no backend change needed)
+
+`GET /debates/{id}/token?room=prop|opp` already issues tokens in `teams-selected`. Three
+conditions, all of which must hold or you get `403`:
+
+1. `prep_rooms_opened_at` is set **and** in the past — `teams-selected` alone is not enough;
+2. `current_stage === 0` — prep rooms close when stage 1 starts, reopen on rollback-to-lobby;
+3. caller is an **approved `debater` whose `side` matches** the requested room.
+
+**Drive the Join button off `live-state.rooms.{prop|opp}.joinable_for_me`** — it already
+accounts for all three plus the caller's side, and is true on exactly one of the two, so you
+can route without computing side yourself. `rooms.{prop|opp}.name` is the room name.
+
+Judges, trainers and viewers get `joinable_for_me: false` on both and `403` if they ask
+anyway. **Trainers are deliberately excluded** from prep rooms — existing intentional
+behaviour.
+
+---
+
+## 6. Push notifications (§7) — built, pending Firebase
+
+### 6.1 Device registration
+
+```
+POST   /api/devices    { "token": "…", "platform": "android|ios", "locale": "ar|en" }
+DELETE /api/devices    { "token": "…" }
+```
+
+Both return the standard envelope with `data: null`. Both idempotent:
+
+- `POST` is an **upsert keyed on the token**. Re-registering never duplicates, and a token
+  previously owned by another user is **re-assigned** — so pushes for user A can never land
+  on a device now held by user B.
+- `DELETE` returns `200` for an unknown token.
+- `locale` defaults to `ar`; call `POST` again on language switch to update it.
+- `platform` outside `android|ios` → `422`.
+
+### 6.2 Payload contract
+
+Every push carries localized `notification.title`/`body` plus a **data** block. All data
+values are strings (FCM constraint). `type` is always present.
+
+| # | `type` | Data keys | Deep link | Recipients |
+|---|---|---|---|---|
+| 1 | `debate_state_changed` | `debate_id` | debate details | all approved participants |
+| 2 | `debate_accepted` | `debate_id` | debate details | selected participants only |
+| 3 | `prep_reminder` | `debate_id` | debate details | **debaters only**, not judges |
+| 4 | `motion_revealed` | `debate_id` | debate details | all participants **incl. judges** |
+| 5 | `debate_created` | `debate_id` | debate details | all active users |
+| 6 | `survey_created` | `survey_id` | survey | eligible users only (team-targeted → that team; else `target_roles`) |
+| 7 | `team_join_result` | `team_id`, `result` (`accepted`\|`refused`) | team | the applicant |
+| 8 | `blog_weekly_digest` | *(none)* | blog | all active users |
+
+**#1 vs #2 de-duplication:** on the announce transition the selected set receives **#2
+only**; #1 goes to the remaining participants. Nobody gets both for one event.
+
+### 6.3 ⚠️ No FCM topics — deviation from my earlier proposal
+
+I originally proposed an `all-users` topic for #5/#8. **I did not build that**, and you do
+**not** need to subscribe/unsubscribe. Both go to stored device tokens instead, because a
+topic delivers to every install that ever subscribed — including logged-out devices and
+users who have since been deactivated — and there is no way to honour "active users only"
+or to prune dead tokens through a topic. If push volume later makes this a problem we can
+revisit, but it would then become a frontend contract item.
+
+### 6.4 Localization
+
+Copy is stored per type in `app/Notifications/PushType.php` with ar + en and `:placeholder`
+substitution, and is chosen **per device** from the registered `locale` — a user with an
+Arabic phone and an English tablet gets each in its own language. Unknown locale → English.
+
+**The copy is my first draft and I expect you to correct it** — you have the better view of
+tone and how the strings render. Placeholders in use: `:debate_title`, `:survey_title`,
+`:team_name`, `:count`, `:result_ar`/`:result_en`. Send me replacements and I will drop them
+in; the file is the single source of truth.
+
+### 6.5 Scheduling
+
+- **#3 prep reminder** — polled every minute alongside `debates:tick`, deriving the time
+  from the debate's *current* data, so rescheduling needs no job cancellation. Idempotent
+  via a new `debates.prep_reminder_sent_at` column. (A per-debate one-shot job would have
+  needed a queue worker; this project runs `QUEUE_CONNECTION=sync`.)
+- **#8 weekly digest** — `Saturday 18:00 Asia/Damascus`; skipped entirely if no article was
+  published in the preceding 7 days.
+
+### 6.6 ⛔ Still blocked: Firebase
+
+Everything above is built and tested, but **nothing will actually send until the Firebase
+project exists.** Without `FCM_PROJECT_ID` + `FCM_CREDENTIALS_PATH`, `PushService` is a
+logged no-op — deliberately, so a missing credential can never break the debate or team
+action that triggered the notification. Tokens FCM reports as `UNREGISTERED`/
+`INVALID_ARGUMENT` are pruned automatically once live.
+
+---
+
+## 7. Attendance (§1.6) — deprecated, not deleted
+
+The three endpoints return **`410 Gone`** for one release rather than 404, so an un-updated
+client gets an unambiguous signal instead of something that looks like a broken deploy:
+
+```
+GET /debaters/{id}/stats/prep-attendance   → 410
+GET /trainers/{id}/stats/attendance        → 410
+GET /judges/{id}/stats/attendance          → 410
+```
+
+Controller and service are deleted; only the routes remain. Tell me when the new app is
+fully rolled out and I will remove the routes too.
+
+**Activity endpoints are untouched** and there is a test guarding that they were not removed
+by association.
+
+---
+
+## 8. Migrations to run
+
+```
+2026_07_30_000001_drop_stats_visible_from_users_table
+2026_07_30_000002_create_devices_table
+2026_07_30_000003_add_prep_reminder_sent_at_to_debates_table
+```
+
+⚠️ The first is **destructive for users who had opted out** — their preference cannot be
+recovered by rolling back (`down()` restores the column at its default). That is inherent to
+the product decision.
+
+New env keys (both optional; absent = push disabled):
+
+```
+FCM_PROJECT_ID=
+FCM_CREDENTIALS_PATH=/absolute/path/to/service-account.json
+```
+
+---
+
+## 9. Still open — what I need from you
+
+1. **Firebase project** (Q6) — the only hard blocker left.
+2. **Corrected ar/en copy** for the 8 types (§6.4).
+3. **Confirm §0** is absorbed — especially `honoring` → `honorable` and `data[]` vs
+   `data.items[]`.
+4. **Note the two default changes**: achievements now default to date order, and the
+   Points leaderboard tab must hide its filters.
+
+One flag on **#5 `debate_created` → all users**: it fires on *every* debate creation. That is
+the notification most likely to make users disable push entirely — which would also cost you
+#2, #3 and #4, the genuinely useful ones. Consider restricting it to debates open for
+registration. Your call; it is a one-line change on my side.

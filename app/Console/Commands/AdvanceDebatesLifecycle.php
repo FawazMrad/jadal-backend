@@ -6,6 +6,7 @@ use App\Models\Debate;
 use App\Models\DebateParticipant;
 use App\Models\DebatePhase;
 use App\Services\LiveKitService;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -55,6 +56,9 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->update(['motion_revealed_at' => $now]);
                 $debate->refresh();
                 $this->info("Debate {$debate->id}: motion revealed.");
+
+                // Spec §7.2 #4 — all participants, judges included.
+                app(DebateNotifier::class)->motionRevealed($debate);
             }
 
             if ($debate->status === 'scheduled') {
@@ -96,12 +100,20 @@ class AdvanceDebatesLifecycle extends Command
                 ? 'teams-selected'
                 : $debate->status;
 
+            $statusChanged = $newStatus !== $debate->status;
+
             $debate->update([
                 'prep_rooms_opened_at' => $now,
                 'status'               => $newStatus,
             ]);
             $debate->refresh();
             $this->info("Debate {$debate->id}: prep rooms opened, status → {$newStatus}.");
+
+            // Spec §7.2 #1 — only on an actual transition (announced →
+            // teams-selected), not on every prep-room open.
+            if ($statusChanged) {
+                app(DebateNotifier::class)->debateStateChanged($debate);
+            }
         }
 
         // ── Step 3: Start debate at scheduled_at ─────────────────────────────

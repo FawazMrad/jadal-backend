@@ -76,6 +76,14 @@ return [
         'timeout'        => (int) env('WHISPER_TIMEOUT_SECONDS', 1800),
     ],
 
+    // Firebase Cloud Messaging (frontend spec §7). Absent config = push is a
+    // logged no-op, never an error — see PushService::isConfigured().
+    'fcm' => [
+        'project_id'  => env('FCM_PROJECT_ID'),
+        // Absolute path to the service-account JSON, kept OUT of the repo.
+        'credentials' => env('FCM_CREDENTIALS_PATH'),
+    ],
+
     'groq' => [
         'api_key' => env('GROQ_API_KEY'),
         'model'   => env('GROQ_MODEL', 'openai/gpt-oss-20b'),

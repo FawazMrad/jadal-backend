@@ -36,12 +36,13 @@ class CoachTeamSummaryController extends Controller
         private ActivityStatsService $activityStats,
     ) {}
 
+    /**
+     * Frontend spec §6.4 — statistics are public for every user, so the
+     * previous self/admin/stats_visible gate is gone. Any authenticated user
+     * may read any coach's team summary.
+     */
     public function show(StatsFilterRequest $request, User $trainer): JsonResponse
     {
-        if (! $this->canView($request->user(), $trainer)) {
-            return $this->error('غير مصرح بعرض هذه الإحصائيات. | Not authorized to view these statistics.', [], 403);
-        }
-
         $f = StatsFilter::fromArray($request->validated());
 
         $teams = Team::where('created_by', $trainer->id)->where('is_random', false)->get();
@@ -86,15 +87,4 @@ class CoachTeamSummaryController extends Controller
         return empty($values) ? null : round(array_sum($values) / count($values), 4);
     }
 
-    private function canView(User $viewer, User $trainer): bool
-    {
-        if ($viewer->role === 'admin') {
-            return true;
-        }
-        if ((int) $viewer->id === (int) $trainer->id) {
-            return true;
-        }
-
-        return (bool) $trainer->stats_visible;
-    }
 }

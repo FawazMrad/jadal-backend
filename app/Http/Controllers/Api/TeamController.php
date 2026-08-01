@@ -18,6 +18,7 @@ use App\Models\TeamJoinRequest;
 use App\Models\TeamLeaveRequest;
 use App\Models\TeamMember;
 use App\Models\User;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -642,10 +643,16 @@ class TeamController extends Controller
                     ]);
                 }
 
-                // TODO: notify user — join accepted
             }
-            // TODO: notify user — join rejected
         });
+
+        // Spec §7.2 #7 — notify the applicant either way. Outside the
+        // transaction: a push failure must never roll back the decision.
+        app(DebateNotifier::class)->teamJoinResult(
+            $team,
+            (int) $joinRequest->user_id,
+            $request->status === 'accepted'
+        );
 
         $joinRequest->load('user');
 

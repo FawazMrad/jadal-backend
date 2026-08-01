@@ -56,19 +56,56 @@ class DebaterStatsAccessValidationTest extends TestCase
         $this->actingAs($admin)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
-    /** V2 §9 — opting out hides stats from everyone except self/admin/supervising coach. */
-    public function test_opted_out_debater_hides_stats_from_strangers_only(): void
+    /**
+     * Frontend spec §6.4 — the stats_visible opt-out is removed and statistics
+     * are public, so every role reads the same 200. (This test previously
+     * asserted a stranger got 403 when the debater had opted out.)
+     */
+    public function test_stats_are_public_to_every_authenticated_role(): void
     {
-        $d = $this->debater();
-        $d->update(['stats_visible' => false]);
-        $coach   = $this->coachWithSupervisee($d);
-        $admin   = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $d        = $this->debater();
+        $coach    = $this->coachWithSupervisee($d);
+        $admin    = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $stranger = $this->debater();
 
-        $this->actingAs($stranger)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(403);
-        $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
-        $this->actingAs($admin)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
-        $this->actingAs($coach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
+        foreach ([$stranger, $d, $admin, $coach] as $viewer) {
+            $this->actingAs($viewer)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
+        }
+    }
+
+    /**
+     * Spec §1.9 — these metrics are debating-performance only, so a judge or
+     * trainer SUBJECT is rejected rather than returning empty aggregates that
+     * read as "this judge has a 0% win rate".
+     */
+    public function test_non_debater_subject_is_rejected(): void
+    {
+        $viewer  = $this->debater();
+        $judge   = User::factory()->create(['role' => 'judge', 'status' => 'active']);
+        $trainer = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
+
+        foreach ([$judge, $trainer] as $subject) {
+            foreach (['win-rate', 'avg-score', 'best-speaker', 'improvement'] as $endpoint) {
+                $this->actingAs($viewer)
+                    ->getJson("/api/debaters/{$subject->id}/stats/{$endpoint}")
+                    ->assertStatus(422);
+            }
+        }
+    }
+
+    /** Spec §1.4/§9 — position and framework filters may never be combined. */
+    public function test_positions_and_frameworks_are_mutually_exclusive(): void
+    {
+        $d = $this->debater();
+
+        $this->actingAs($d)
+            ->getJson("/api/debaters/{$d->id}/stats/win-rate?positions=P1&frameworks=1")
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('positions');
+
+        // Either one alone is still fine.
+        $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate?positions=P1")->assertStatus(200);
+        $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate?frameworks=1")->assertStatus(200);
     }
 
     // ── Validation rules ───────────────────────────────────────────────────────

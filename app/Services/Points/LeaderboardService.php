@@ -25,11 +25,10 @@ use Illuminate\Support\Facades\Storage;
  * shows (same code path, zero drift risk). Flagged in case it ever needs a
  * cached/materialized ranking at larger scale.
  *
- * Excludes users with stats_visible=false entirely (see §9) — a leaderboard
- * ranking is unambiguously "your performance data made public." Teams have no
- * per-team visibility flag, so team entries are never excluded, and `is_random`
- * (ad-hoc/one-off) teams are excluded from ranking since they're not a
- * persistent entity worth ranking.
+ * Frontend spec §6.4 — statistics are public for every user, so the previous
+ * stats_visible exclusion is gone and every qualifying debater is ranked.
+ * `is_random` (ad-hoc/one-off) teams remain excluded from the team ranking
+ * since they are not a persistent entity worth ranking.
  */
 class LeaderboardService
 {
@@ -51,11 +50,23 @@ class LeaderboardService
         return self::TEAM_METRICS;
     }
 
-    public function debaters(string $metric, int $limit): array
+    /**
+     * $filter (spec §1.5) narrows the ranking to a date range / positions /
+     * frameworks. It is threaded straight into the SAME per-debater pipeline
+     * the own-statistics screen uses, so a filtered leaderboard value always
+     * equals that debater's own filtered number — no second implementation to
+     * drift.
+     *
+     * `metric=points` cannot honour any filter: users.points is a running Elo
+     * rating, not a per-debate quantity, so there is no "points as of month X"
+     * to compute. The controller rejects that combination before it gets here.
+     */
+    public function debaters(string $metric, int $limit, ?StatsFilter $filter = null): array
     {
+        $filter ??= StatsFilter::fromArray([]);
+
         if ($metric === 'points') {
             $users = User::where('role', 'debater')
-                ->where('stats_visible', true)
                 ->orderByDesc('points')
                 ->limit($limit)
                 ->get(['id', 'name', 'avatar_url', 'points']);
@@ -63,15 +74,13 @@ class LeaderboardService
             return $users->values()->map(fn (User $u, int $i) => $this->userEntry($i + 1, $u, (int) $u->points))->all();
         }
 
-        $filter = StatsFilter::fromArray([]);
-
         $candidateIds = DebateParticipant::where('role', 'debater')
             ->where('status', 'approved')
             ->whereHas('debate', fn ($q) => $q->where('status', 'completed')->whereNotNull('result_revealed_at'))
             ->distinct()
             ->pluck('user_id');
 
-        $users = User::whereIn('id', $candidateIds)->where('stats_visible', true)->get(['id', 'name', 'avatar_url']);
+        $users = User::whereIn('id', $candidateIds)->get(['id', 'name', 'avatar_url']);
 
         $scored = [];
         foreach ($users as $user) {
@@ -102,8 +111,15 @@ class LeaderboardService
             ->all();
     }
 
-    public function teams(string $metric, int $limit): array
+    /**
+     * Same filter semantics as debaters(), minus `positions` — a position is a
+     * per-debater speaking slot with no meaning for a team aggregate, so the
+     * controller rejects it on this endpoint.
+     */
+    public function teams(string $metric, int $limit, ?StatsFilter $filter = null): array
     {
+        $filter ??= StatsFilter::fromArray([]);
+
         if ($metric === 'points') {
             $teams = Team::where('is_random', false)
                 ->orderByDesc('points')
@@ -113,7 +129,6 @@ class LeaderboardService
             return $teams->values()->map(fn (Team $t, int $i) => $this->teamEntry($i + 1, $t, (int) $t->points))->all();
         }
 
-        $filter = StatsFilter::fromArray([]);
         $teams = Team::where('is_random', false)->get(['id', 'name']);
 
         $scored = [];

@@ -48,12 +48,17 @@ class CoachTeamSummaryTest extends TestCase
         $res->assertJsonPath('data.team_avg_score', 80);
     }
 
-    public function test_summary_forbidden_for_strangers_when_opted_out(): void
+    /**
+     * Frontend spec §6.4 — statistics are public, so the coach team summary is
+     * readable by any authenticated user. (This test previously asserted the
+     * stranger got a 403 when the coach had opted out.)
+     */
+    public function test_summary_is_public_to_any_authenticated_user(): void
     {
-        $coach = User::factory()->create(['role' => 'trainer', 'status' => 'active', 'stats_visible' => false]);
+        $coach = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
         $stranger = User::factory()->create(['role' => 'debater', 'status' => 'active']);
 
-        $this->actingAs($stranger)->getJson("/api/trainers/{$coach->id}/stats/team-summary")->assertStatus(403);
+        $this->actingAs($stranger)->getJson("/api/trainers/{$coach->id}/stats/team-summary")->assertStatus(200);
         $this->actingAs($coach)->getJson("/api/trainers/{$coach->id}/stats/team-summary")->assertStatus(200);
     }
 

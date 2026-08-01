@@ -18,7 +18,25 @@ class UpdateProfileRequest extends FormRequest
             'phone'      => ['sometimes', 'nullable', 'string', 'max:20'],
             'birth_date' => ['sometimes', 'nullable', 'date', 'before:today', 'after:1900-01-01'],
             'location'   => ['sometimes', 'nullable', 'string', 'max:150'],
+            // Retired (frontend spec §6.4 — statistics are public for everyone).
+            // Still ACCEPTED so an un-updated client that keeps sending it does
+            // not start getting 422s mid-rollout, but it is not in validated()
+            // output and is never persisted — a pure no-op. Remove this rule
+            // once the new app version is fully deployed.
+            'stats_visible' => ['sometimes'],
         ];
+    }
+
+    /**
+     * Drop the retired field so it can never reach ->update(). Belt and braces:
+     * it is no longer in User::$fillable either.
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $data = parent::validated();
+        unset($data['stats_visible']);
+
+        return $key === null ? $data : data_get($data, $key, $default);
     }
 
     public function messages(): array

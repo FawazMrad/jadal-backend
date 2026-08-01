@@ -8,7 +8,6 @@ use App\Http\Controllers\Api\Admin\AdminStatsController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\ActivityStatsController;
-use App\Http\Controllers\Api\AttendanceStatsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CoachTeamSummaryController;
 use App\Http\Controllers\Api\SearchController;
@@ -17,6 +16,8 @@ use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\DebateChatController;
 use App\Http\Controllers\Api\DebateController;
 use App\Http\Controllers\Api\DebaterStatsController;
+use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\GoneController;
 use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\UserProfileController;
 use App\Http\Controllers\Api\LiveDebateController;
@@ -191,17 +192,23 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/best-speaker',  [DebaterStatsController::class, 'bestSpeaker']) ->name('best-speaker');
         Route::get('/score-ranking', [DebaterStatsController::class, 'scoreRanking'])->name('score-ranking');
         Route::get('/improvement',   [DebaterStatsController::class, 'improvement']) ->name('improvement');
-        // Sprinkles §6.5 — prep-room attendance (same auth policy as the rest).
-        Route::get('/prep-attendance', [AttendanceStatsController::class, 'debater'])->name('prep-attendance');
+        // DEPRECATED (frontend spec §1.6) — the attendance feature is removed
+        // from the app. Kept routed and returning 410 Gone for one release so an
+        // un-updated client gets an unambiguous "this is gone" instead of a 404
+        // that looks like a routing bug. Delete the route + controller once the
+        // new app version is fully rolled out.
+        Route::get('/prep-attendance', GoneController::class)->name('prep-attendance');
         // V2 §7 — activity/participation score (additional "kind" on the same screen).
         Route::get('/activity', [ActivityStatsController::class, 'debater'])->name('activity');
     });
 
-    // ── Sprinkles §6.5 + V2 §7: coach + judge attendance/activity stats ────────
-    Route::get('/trainers/{trainer}/stats/attendance', [AttendanceStatsController::class, 'trainer'])->name('trainers.stats.attendance');
-    Route::get('/judges/{judge}/stats/attendance',     [AttendanceStatsController::class, 'judge'])  ->name('judges.stats.attendance');
+    // ── V2 §7: coach + judge activity stats (attendance is deprecated below) ──
     Route::get('/trainers/{trainer}/stats/activity',   [ActivityStatsController::class, 'trainer'])  ->name('trainers.stats.activity');
     Route::get('/judges/{judge}/stats/activity',       [ActivityStatsController::class, 'judge'])    ->name('judges.stats.activity');
+
+    // DEPRECATED (frontend spec §1.6) — see the note above.
+    Route::get('/trainers/{trainer}/stats/attendance', GoneController::class)->name('trainers.stats.attendance');
+    Route::get('/judges/{judge}/stats/attendance',     GoneController::class)->name('judges.stats.attendance');
 
     // V2 §3 — coach team-summary (avg improvement/win-rate/score/activity across the coach's teams).
     Route::get('/trainers/{trainer}/stats/team-summary', [CoachTeamSummaryController::class, 'show'])->name('trainers.stats.team-summary');
@@ -225,6 +232,12 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::patch('/{notification}/read',     [NotificationController::class, 'markRead'])    ->name('read');
         Route::delete('/{notification}',         [NotificationController::class, 'destroy'])     ->name('destroy');
     });
+
+    // ── Push notification device registry (spec §7.2.1) ───────────────────────
+    // Both idempotent: called on login, on FCM token rotation, and on app
+    // language change.
+    Route::post('/devices',   [DeviceController::class, 'store'])  ->name('devices.store');
+    Route::delete('/devices', [DeviceController::class, 'destroy'])->name('devices.destroy');
 
     // ── Teams — leave/join (any auth user, declared before trainer group) ──────
     Route::post('/teams/{team}/leave', [TeamController::class, 'leave'])

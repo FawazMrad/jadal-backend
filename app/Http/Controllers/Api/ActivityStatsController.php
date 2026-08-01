@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Stats\StatsFilterRequest;
-use App\Models\TeamMember;
 use App\Models\User;
 use App\Services\Stats\ActivityStatsService;
 use App\Services\Stats\StatsFilter;
@@ -37,46 +36,16 @@ class ActivityStatsController extends Controller
         return $this->respond($request, $judge);
     }
 
+    /**
+     * Frontend spec §6.4 — statistics are public for every user, so there is no
+     * visibility gate here any more. Any authenticated user may read any user's
+     * activity score; the route's auth middleware is the only check.
+     */
     private function respond(StatsFilterRequest $request, User $target): JsonResponse
     {
-        if (! $this->canView($request->user(), $target)) {
-            return $this->error('هذا المستخدم أخفى إحصائياته. | This user has hidden their statistics.', [], 403);
-        }
-
         $f = StatsFilter::fromArray($request->validated());
 
         return $this->success($this->service->activity($target, $f), 'Activity score retrieved.');
     }
 
-    /**
-     * V2 §9 — stats are public by default (any authenticated user may view);
-     * self/admin/supervising-coach ALWAYS see it, everyone else is blocked
-     * only when the target has opted out (`stats_visible = false`).
-     */
-    private function canView(User $viewer, User $target): bool
-    {
-        if ($viewer->role === 'admin') {
-            return true;
-        }
-        if ((int) $viewer->id === (int) $target->id) {
-            return true;
-        }
-        if ($this->isSupervisingCoach($viewer, $target)) {
-            return true;
-        }
-
-        return (bool) $target->stats_visible;
-    }
-
-    private function isSupervisingCoach(User $viewer, User $target): bool
-    {
-        if ($viewer->role !== 'trainer') {
-            return false;
-        }
-
-        return TeamMember::where('user_id', $target->id)
-            ->where('status', 'current')
-            ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
-            ->exists();
-    }
 }

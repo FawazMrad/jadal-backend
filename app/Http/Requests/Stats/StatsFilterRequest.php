@@ -29,6 +29,15 @@ class StatsFilterRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($v) {
+            // Spec §1.4/§9 — position and framework are mutually exclusive
+            // dimensions. Combined they produce a slice too granular to mean
+            // anything (e.g. "3rd opposition on economic motions" over two
+            // debates). The UI clears one when the other is picked; this is the
+            // server-side enforcement so the rule holds for any client.
+            if ($this->filled('positions') && $this->filled('frameworks')) {
+                $v->errors()->add('positions', 'positions and frameworks are mutually exclusive');
+            }
+
             // from <= to
             if ($this->filled('from') && $this->filled('to') && $this->input('to') < $this->input('from')) {
                 $v->errors()->add('to', 'The `to` month must be on or after `from`.');

@@ -17,6 +17,7 @@ use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
 use App\Models\Team;
 use App\Models\TeamMember;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -53,6 +54,9 @@ class AdminDebateController extends Controller
         ]));
 
         $debate->load(['format', 'motion', 'createdBy']);
+
+        // Spec §7.2 #5 — new debate, all users.
+        app(DebateNotifier::class)->debateCreated($debate);
 
         return $this->success(new DebateDetailResource($debate), 'تم إنشاء النقاش. | Debate created.', 201);
     }
@@ -213,7 +217,11 @@ class AdminDebateController extends Controller
             }
         }
 
-        DB::transaction(function () use ($validated, $debate, $request) {
+        // Hoisted out of the closure so the notification step below can address
+        // exactly the users who were kept in the lineup.
+        $keptUserIds = [];
+
+        DB::transaction(function () use ($validated, $debate, $request, &$keptUserIds) {
             // 1) Resolve each entry to a concrete team_id (creating random teams).
             $teamIds = [];
             foreach ($validated['teams'] as $t) {
@@ -273,6 +281,14 @@ class AdminDebateController extends Controller
         });
 
         $debate->load('participants.user');
+
+        // Spec §7.2 #1/#2 with the agreed de-duplication rule: the users kept
+        // in the lineup get #2 (debate_accepted) ONLY, and #1
+        // (debate_state_changed) goes to the remaining participants, so nobody
+        // receives both for the same transition.
+        $notifier = app(DebateNotifier::class);
+        $notifier->debateAccepted($debate, $keptUserIds);
+        $notifier->debateStateChanged($debate, $keptUserIds);
 
         return $this->success(
             new DebateDetailResource($debate->fresh(['format', 'motion', 'createdBy', 'participants.user'])),

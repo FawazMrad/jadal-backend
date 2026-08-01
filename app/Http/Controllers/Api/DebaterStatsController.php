@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Stats\BestSpeakerRequest;
 use App\Http\Requests\Stats\ScoreRankingRequest;
 use App\Http\Requests\Stats\StatsFilterRequest;
-use App\Models\TeamMember;
 use App\Models\User;
 use App\Services\Stats\DebaterStatsService;
 use App\Services\Stats\StatsFilter;
@@ -19,8 +18,8 @@ class DebaterStatsController extends Controller
 
     public function winRate(StatsFilterRequest $request, User $debater): JsonResponse
     {
-        if (! $this->canView($request->user(), $debater)) {
-            return $this->forbidden();
+        if ($guard = $this->guardSubjectIsDebater($debater)) {
+            return $guard;
         }
         $f = StatsFilter::fromArray($request->validated());
         $rows = $this->service->participationRows($debater, $f);
@@ -33,8 +32,8 @@ class DebaterStatsController extends Controller
 
     public function avgScore(StatsFilterRequest $request, User $debater): JsonResponse
     {
-        if (! $this->canView($request->user(), $debater)) {
-            return $this->forbidden();
+        if ($guard = $this->guardSubjectIsDebater($debater)) {
+            return $guard;
         }
         $f = StatsFilter::fromArray($request->validated());
         $rows = $this->service->participationRows($debater, $f);
@@ -47,8 +46,8 @@ class DebaterStatsController extends Controller
 
     public function bestSpeaker(BestSpeakerRequest $request, User $debater): JsonResponse
     {
-        if (! $this->canView($request->user(), $debater)) {
-            return $this->forbidden();
+        if ($guard = $this->guardSubjectIsDebater($debater)) {
+            return $guard;
         }
         $f = StatsFilter::fromArray($request->validated());
         $rows = $this->service->participationRows($debater, $f);
@@ -61,8 +60,8 @@ class DebaterStatsController extends Controller
 
     public function scoreRanking(ScoreRankingRequest $request, User $debater): JsonResponse
     {
-        if (! $this->canView($request->user(), $debater)) {
-            return $this->forbidden();
+        if ($guard = $this->guardSubjectIsDebater($debater)) {
+            return $guard;
         }
         $f = StatsFilter::fromArray($request->validated());
         $rows = $this->service->participationRows($debater, $f);
@@ -72,8 +71,8 @@ class DebaterStatsController extends Controller
 
     public function improvement(StatsFilterRequest $request, User $debater): JsonResponse
     {
-        if (! $this->canView($request->user(), $debater)) {
-            return $this->forbidden();
+        if ($guard = $this->guardSubjectIsDebater($debater)) {
+            return $guard;
         }
         $f = StatsFilter::fromArray($request->validated());
         $rows = $this->service->participationRows($debater, $f);
@@ -84,37 +83,26 @@ class DebaterStatsController extends Controller
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * V2 §9 — stats are public by default (any authenticated user may view);
-     * self/admin/supervising-coach ALWAYS see it regardless, everyone else is
-     * blocked only when the target has opted out (`stats_visible = false`).
-     * A coach supervises a debater who is a CURRENT member of any team the
-     * coach created (teams.created_by = coach, team_members.status = 'current').
+     * Spec §1.9 — these five metrics are all derived from debating performance,
+     * so they are meaningless for a judge or trainer subject. Previously such a
+     * request returned 200 with empty aggregates, which reads as "this judge has
+     * a 0% win rate" rather than "this question does not apply". Reject instead.
+     *
+     * Note this guards the SUBJECT, not the viewer: since spec §6.4 made
+     * statistics public, any authenticated user may read any debater's stats,
+     * and the old stats_visible / self / supervising-coach gate is gone.
      */
-    private function canView(User $viewer, User $debater): bool
+    private function guardSubjectIsDebater(User $debater): ?JsonResponse
     {
-        if ($viewer->role === 'admin') {
-            return true;
-        }
-        if ((int) $viewer->id === (int) $debater->id) {
-            return true;
-        }
-        if ($this->isSupervisingCoach($viewer, $debater)) {
-            return true;
+        if ($debater->role === 'debater') {
+            return null;
         }
 
-        return (bool) $debater->stats_visible;
-    }
-
-    private function isSupervisingCoach(User $viewer, User $debater): bool
-    {
-        if ($viewer->role !== 'trainer') {
-            return false;
-        }
-
-        return TeamMember::where('user_id', $debater->id)
-            ->where('status', 'current')
-            ->whereHas('team', fn ($q) => $q->where('created_by', $viewer->id))
-            ->exists();
+        return $this->error(
+            'هذه الإحصائيات متاحة للمتناظرين فقط. | These statistics are only available for debaters.',
+            ['role' => $debater->role],
+            422
+        );
     }
 
     private function guardMonthSpan(StatsFilter $f, Collection $rows): ?JsonResponse
@@ -132,8 +120,4 @@ class DebaterStatsController extends Controller
         return null;
     }
 
-    private function forbidden(): JsonResponse
-    {
-        return $this->error('غير مصرح بعرض إحصائيات هذا المتناظر. | Not authorized to view this debater\'s stats.', [], 403);
-    }
 }

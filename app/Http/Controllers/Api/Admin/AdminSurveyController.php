@@ -13,6 +13,7 @@ use App\Http\Resources\SurveyResultResource;
 use App\Models\Survey;
 use App\Models\SurveyQuestion;
 use App\Models\SurveyResponse;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -48,6 +49,15 @@ class AdminSurveyController extends Controller
         ]);
 
         $survey->load(['createdBy', 'questions']);
+
+        // Spec §7.2 #6 — only users eligible to see this survey. An
+        // admin-created survey has no team targeting, so eligibility is the
+        // target_roles set.
+        app(DebateNotifier::class)->surveyCreated(
+            (int) $survey->id,
+            (string) $survey->title,
+            $data['target_roles'] ?? []
+        );
 
         return $this->success(
             new SurveyDetailResource($survey),

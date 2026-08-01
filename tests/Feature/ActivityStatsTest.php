@@ -121,12 +121,17 @@ class ActivityStatsTest extends TestCase
         $this->assertDatabaseHas('debate_viewers', ['debate_id' => $debate->id, 'user_id' => $viewer->id]);
     }
 
-    public function test_opted_out_user_hides_activity_from_strangers(): void
+    /**
+     * Frontend spec §6.4 — statistics are public for every user. The
+     * stats_visible opt-out is gone, so a stranger reads the same 200 the
+     * owner does. (This test previously asserted the opposite.)
+     */
+    public function test_activity_is_public_to_any_authenticated_user(): void
     {
-        $target = User::factory()->create(['role' => 'debater', 'status' => 'active', 'stats_visible' => false]);
+        $target = User::factory()->create(['role' => 'debater', 'status' => 'active']);
         $stranger = User::factory()->create(['role' => 'debater', 'status' => 'active']);
 
-        $this->actingAs($stranger)->getJson("/api/debaters/{$target->id}/stats/activity")->assertStatus(403);
+        $this->actingAs($stranger)->getJson("/api/debaters/{$target->id}/stats/activity")->assertStatus(200);
         $this->actingAs($target)->getJson("/api/debaters/{$target->id}/stats/activity")->assertStatus(200);
     }
 }

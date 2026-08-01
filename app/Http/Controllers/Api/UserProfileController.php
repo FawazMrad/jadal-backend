@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 /**
  * Sprinkles §6.1–§6.4 — public user profiles.
@@ -64,13 +65,35 @@ class UserProfileController extends Controller
 
     // ── §6.3: GET /users/{user}/achievements ────────────────────────────────────
 
+    /**
+     * Spec §6.8 — the "show all" page groups by Date (default) or by Tier.
+     * Server-side SORTING only; the client renders the section headers, so the
+     * response shape and pagination are unchanged.
+     *
+     * NOTE: the default changed. This endpoint previously always returned
+     * rank-then-recency; `sort=date` (the new default) is recency-first, and
+     * `sort=rank` preserves the old ordering.
+     */
     public function achievements(Request $request, User $user): JsonResponse
     {
-        $perPage = min(100, max(1, (int) $request->query('per_page', 15)));
+        $request->validate([
+            'sort' => ['sometimes', Rule::in(['date', 'rank'])],
+        ]);
 
-        $achievements = $user->achievements()
-            ->orderByRankThenRecency()
-            ->paginate($perPage);
+        $perPage = min(100, max(1, (int) $request->query('per_page', 15)));
+        $sort    = (string) $request->query('sort', 'date');
+
+        $query = $user->achievements();
+
+        if ($sort === 'rank') {
+            $query->orderByRankThenRecency();
+        } else {
+            // Qualified: assigned_at lives on the pivot, and `achievements`
+            // has its own timestamps that would otherwise be ambiguous.
+            $query->orderByDesc('achievement_assignments.assigned_at');
+        }
+
+        $achievements = $query->paginate($perPage);
 
         return $this->paginated(
             AchievementResource::collection($achievements),

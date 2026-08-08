@@ -55,8 +55,9 @@ class AdminDebateController extends Controller
 
         $debate->load(['format', 'motion', 'createdBy']);
 
-        // Spec §7.2 #5 — new debate, all users.
-        app(DebateNotifier::class)->debateCreated($debate);
+        // No push on debate creation. Spec §7.2 #5 (debate_created) was retired
+        // — notifying every user on every creation was the most likely reason
+        // for someone to turn push off entirely. See DebateNotifier::debateCreated().
 
         return $this->success(new DebateDetailResource($debate), 'تم إنشاء النقاش. | Debate created.', 201);
     }
@@ -69,9 +70,30 @@ class AdminDebateController extends Controller
         return $this->success(new DebateDetailResource($debate), 'تم جلب النقاش. | Debate retrieved.');
     }
 
+    /**
+     * Re-arms the §7.2 #3 prep reminder when the debate's timing moves.
+     *
+     * The reminder fires one hour before prep rooms open, and that moment is
+     * derived as `scheduled_at` minus the FORMAT's prep_rooms_open_offset_hours
+     * — so either field moving invalidates an already-sent reminder. Clearing
+     * the stamp lets SendPrepReminders send a fresh one for the new time.
+     *
+     * NOTE: this watches scheduled_at/format_id rather than
+     * prep_rooms_opened_at, which is what the decision literally named.
+     * prep_rooms_opened_at is not editable here (it is stamped by
+     * debates:tick when the rooms actually open) and, once set, the reminder
+     * query excludes the debate anyway — so keying on it would never fire.
+     * Direction is deliberately not special-cased: moving a debate earlier
+     * invalidates the old reminder just as much as moving it later.
+     */
     public function update(UpdateDebateRequest $request, Debate $debate): JsonResponse
     {
         $debate->update($request->validated());
+
+        if ($debate->wasChanged(['scheduled_at', 'format_id'])) {
+            $debate->update(['prep_reminder_sent_at' => null]);
+        }
+
         $debate->load(['format', 'motion']);
 
         return $this->success(new DebateResource($debate), 'تم تحديث النقاش. | Debate updated.');

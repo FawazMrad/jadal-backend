@@ -25,6 +25,11 @@ use Illuminate\Console\Command;
  * the agreed "send immediately if still in the future" rule. Once prep has
  * opened the debate no longer matches, so a debate created after that point is
  * skipped rather than sent late.
+ *
+ * Rescheduling (frontend handoff §6) is handled: AdminDebateController::update()
+ * clears prep_reminder_sent_at whenever scheduled_at or format_id changes, so
+ * a moved debate re-arms and sends a fresh reminder for its new time. Moving a
+ * debate earlier re-arms too — the old reminder is equally invalid either way.
  */
 class SendPrepReminders extends Command
 {

@@ -35,6 +35,11 @@ class Debate extends Model
         'current_stage',
         'motion_revealed_at',
         'prep_rooms_opened_at',
+        // Without this, SendPrepReminders' idempotency stamp was silently
+        // discarded by mass assignment, so the guard never armed and the
+        // reminder re-fired on every poll (once a minute for the whole hour
+        // before prep opens).
+        'prep_reminder_sent_at',
         'result_revealed_at',
         'speeches_completed_at',
         'live_started_at',
@@ -55,6 +60,7 @@ class Debate extends Model
             'ended_at'            => 'datetime',
             'motion_revealed_at'  => 'datetime',
             'prep_rooms_opened_at' => 'datetime',
+            'prep_reminder_sent_at' => 'datetime',
             'result_revealed_at'  => 'datetime',
             'speeches_completed_at' => 'datetime',
             'live_started_at'     => 'datetime',

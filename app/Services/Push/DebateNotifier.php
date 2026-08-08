@@ -79,20 +79,29 @@ class DebateNotifier
     }
 
     /**
-     * #5 — a new debate was created. All users.
+     * #5 debate_created — RETIRED. This never sends, under any condition.
      *
-     * Sent to stored device tokens rather than an FCM topic: a topic would
-     * require the app to subscribe/unsubscribe and would deliver to logged-out
-     * installs too. See BACKEND_RESPONSE.md for the volume caveat on this one.
+     * Product decision: restricting it to "open for registration" turned out to
+     * be a no-op (debates are created as `scheduled`, which IS the
+     * registration-open state), so every debate creation would still have
+     * notified every active user. That volume is the most likely reason for a
+     * user to disable push altogether, which would also cost them #2, #3 and #4
+     * — the notifications that actually matter. So it was dropped outright
+     * rather than narrowed.
+     *
+     * Kept as an inert method rather than deleted so that:
+     *   - any existing or future caller is a guaranteed no-op, not a fatal;
+     *   - the decision is documented where someone would look for it.
+     *
+     * PushType::DEBATE_CREATED and its copy are deliberately left in place —
+     * unused copy is harmless and the constant may be referenced elsewhere.
+     *
+     * The frontend has been told explicitly not to build handling for this
+     * type. Do not re-enable without telling them first.
      */
     public function debateCreated(Debate $debate): void
     {
-        $this->push->sendToUsers(
-            User::where('status', 'active')->pluck('id'),
-            PushType::DEBATE_CREATED,
-            ['debate_id' => $debate->id],
-            ['debate_title' => $debate->title],
-        );
+        return;
     }
 
     /**
@@ -119,18 +128,24 @@ class DebateNotifier
         );
     }
 
-    /** #7 — a join request was accepted or refused. The applicant only. */
+    /**
+     * #7 — a join request was accepted or refused. The applicant only.
+     *
+     * `result` is passed in the replacements as well as the data payload: it
+     * selects which of the two copy rows PushType uses (handoff §4.3). The two
+     * outcomes are separate messages rather than one templated sentence
+     * because Arabic does not take a drop-in accepted/refused noun cleanly.
+     * The DATA payload is unchanged.
+     */
     public function teamJoinResult(Team $team, int $applicantId, bool $accepted): void
     {
+        $result = $accepted ? 'accepted' : 'refused';
+
         $this->push->sendToUsers(
             [$applicantId],
             PushType::TEAM_JOIN_RESULT,
-            ['team_id' => $team->id, 'result' => $accepted ? 'accepted' : 'refused'],
-            [
-                'team_name' => $team->name,
-                'result_ar' => $accepted ? 'قبول' : 'رفض',
-                'result_en' => $accepted ? 'accepted' : 'refused',
-            ],
+            ['team_id' => $team->id, 'result' => $result],
+            ['team_name' => $team->name, 'result' => $result],
         );
     }
 

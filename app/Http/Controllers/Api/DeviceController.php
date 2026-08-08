@@ -39,12 +39,24 @@ class DeviceController extends Controller
 
     /**
      * DELETE /devices — by token, since the app only knows its own token.
-     * Deleting an unknown token is a 200: the caller's desired end state
-     * ("this token is not registered") already holds.
+     *
+     * Scoped to the authenticated user: matching on the token ALONE let any
+     * authenticated caller unregister someone else's device if they knew its
+     * token. Low severity (no data disclosure — the victim just stops
+     * receiving pushes) but there is no legitimate flow that needs it: after a
+     * device is reassigned to another user, the previous owner *should* fail
+     * to delete it.
+     *
+     * Still idempotent — deleting an unknown token, or one belonging to
+     * somebody else, is a 200. The caller's desired end state ("my token is
+     * not registered") holds either way, and returning 404/403 would leak
+     * whether an arbitrary token exists.
      */
     public function destroy(UnregisterDeviceRequest $request): JsonResponse
     {
-        Device::where('token', $request->validated('token'))->delete();
+        Device::where('token', $request->validated('token'))
+            ->where('user_id', $request->user()->id)
+            ->delete();
 
         return $this->success(null, 'تم إلغاء تسجيل الجهاز. | Device unregistered.');
     }

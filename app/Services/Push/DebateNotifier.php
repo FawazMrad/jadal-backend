@@ -23,14 +23,25 @@ class DebateNotifier
 {
     public function __construct(private PushService $push) {}
 
-    /** #1 — a debate changed lifecycle state. All participants. */
+    /**
+     * #1 — a debate changed lifecycle state. All participants.
+     *
+     * The RAW status is passed as a replacement, not a pre-rendered label:
+     * PushType resolves `:stage_label` per device locale, because one
+     * replacements array serves recipients whose devices may be in different
+     * languages. An unlabelled status degrades to the vaguer fallback copy
+     * rather than rendering an empty slot.
+     *
+     * Call this AFTER the status has been written, so $debate->status is the
+     * new state rather than the old one.
+     */
     public function debateStateChanged(Debate $debate, array $excludeUserIds = []): void
     {
         $this->push->sendToUsers(
             $this->participantIds($debate)->diff($excludeUserIds),
             PushType::DEBATE_STATE_CHANGED,
             ['debate_id' => $debate->id],
-            ['debate_title' => $debate->title],
+            ['debate_title' => $debate->title, 'status' => $debate->status],
         );
     }
 
@@ -49,6 +60,29 @@ class DebateNotifier
             ['debate_id' => $debate->id],
             ['debate_title' => $debate->title],
         );
+    }
+
+    /**
+     * #1, but only when the status ACTUALLY moved.
+     *
+     * Several transitions are reachable by more than one route — a debate can
+     * reach `completed` via closeMain OR closeRoom, and `cancelled` via
+     * closeRoom or three separate lifecycle paths. Passing the pre-update
+     * status makes each call site safe to add without auditing every other
+     * one: a no-op update, or a second path arriving after the first already
+     * moved it, sends nothing.
+     *
+     * Capture $previousStatus BEFORE the write and call this AFTER it — and
+     * where the write is inside a transaction, after that transaction commits,
+     * so a push can never fire for a change that then rolls back.
+     */
+    public function debateStateChangedFrom(Debate $debate, ?string $previousStatus, array $excludeUserIds = []): void
+    {
+        if ($previousStatus === $debate->status) {
+            return;
+        }
+
+        $this->debateStateChanged($debate, $excludeUserIds);
     }
 
     /** #3 — one hour before prep opens. DEBATERS ONLY, explicitly not judges. */

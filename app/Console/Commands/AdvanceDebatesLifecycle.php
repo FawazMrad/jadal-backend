@@ -67,6 +67,10 @@ class AdvanceDebatesLifecycle extends Command
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants at motion reveal.");
+                // #1 — reaches nobody here by definition (the debate was still
+                // `scheduled`, so it has no approved participants), but kept for
+                // uniformity so every cancellation path notifies identically.
+                app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
                 return;
             }
         }
@@ -126,6 +130,7 @@ class AdvanceDebatesLifecycle extends Command
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants by start time.");
+                app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
                 return;
             }
 
@@ -142,11 +147,15 @@ class AdvanceDebatesLifecycle extends Command
                     ->count();
 
                 if ($judgeCount === 0) {
+                    $previousStatus = $debate->status;
                     $debate->update([
                         'status'              => 'cancelled',
                         'cancellation_reason' => 'no_judge_at_scheduled',
                     ]);
                     $this->warn("Debate {$debate->id}: cancelled — no approved judges.");
+                    // The cancellation that matters most: this debate HAS
+                    // approved debaters who would otherwise turn up to nothing.
+                    app(DebateNotifier::class)->debateStateChangedFrom($debate, $previousStatus);
                     return;
                 }
 
@@ -165,12 +174,14 @@ class AdvanceDebatesLifecycle extends Command
                     $this->warn("Debate {$debate->id}: could not create main room — " . $e->getMessage());
                 }
 
+                $previousStatus = $debate->status;
                 $debate->update([
                     'status'        => 'live',
                     'started_at'    => $now,
                     'current_stage' => 0,
                 ]);
                 $this->info("Debate {$debate->id}: advanced to live.");
+                app(DebateNotifier::class)->debateStateChangedFrom($debate, $previousStatus);
             }
         }
     }

@@ -493,6 +493,9 @@ class AdminDebateController extends Controller
 
         $debate->update(['status' => 'live', 'started_at' => now()]);
 
+        // #1 — participants are told the debate has gone live.
+        app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
+
         return $this->success(new DebateResource($debate), 'تم بدء النقاش. | Debate started.');
     }
 

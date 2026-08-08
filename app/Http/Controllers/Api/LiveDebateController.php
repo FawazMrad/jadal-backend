@@ -14,6 +14,7 @@ use App\Models\DebatePhase;
 use App\Models\DebateResult;
 use App\Services\LiveKitService;
 use App\Services\Points\PointsService;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -803,6 +804,8 @@ class LiveDebateController extends Controller
             return $this->error('لا يمكن إغلاق الغرفة الرئيسية إلا في مرحلة النتائج. | Main room can only be closed during the result phase.', [], 422);
         }
 
+        $previousStatus = $debate->status;
+
         DB::transaction(function () use ($debate) {
             // Close the main room on LiveKit.
             if ($debate->livekit_room_name) {
@@ -843,6 +846,11 @@ class LiveDebateController extends Controller
         $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
 
+        // #1 — after the transaction commits and after refresh(), so the status
+        // read is the committed one. No-ops when the debate was already
+        // `completed` before this call, which this endpoint explicitly allows.
+        app(DebateNotifier::class)->debateStateChangedFrom($debate, $previousStatus);
+
         return $this->success(
             new LiveStateResource($debate, $myParticipant),
             'تم إغلاق الغرفة الرئيسية. | Main room closed.'
@@ -875,6 +883,8 @@ class LiveDebateController extends Controller
         if (in_array($debate->status, ['cancelled', 'completed'], true)) {
             return $this->error('النقاش منتهٍ بالفعل. | Debate is already finalised.', [], 422);
         }
+
+        $previousStatus = $debate->status;
 
         DB::transaction(function () use ($debate) {
             // The terminal rule: room closed AND a result stored → completed;
@@ -932,6 +942,11 @@ class LiveDebateController extends Controller
 
         $debate->refresh()->load(['format', 'motion.frameworks', 'participants.user', 'participants.team', 'phases', 'result.judge']);
         $myParticipant = $debate->participants->firstWhere('user_id', $user->id);
+
+        // #1 — the terminal transition: `completed` when a result exists, or
+        // `cancelled` when the chair aborted. The cancelled case is the one that
+        // matters most: participants would otherwise turn up to a dead debate.
+        app(DebateNotifier::class)->debateStateChangedFrom($debate, $previousStatus);
 
         return $this->success(
             new LiveStateResource($debate, $myParticipant),

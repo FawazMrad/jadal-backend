@@ -5,21 +5,19 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Debate\ListDebatesRequest;
 use App\Http\Requests\Debate\RegisterDebateRequest;
-use App\Http\Requests\Debate\SubmitResultRequest;
 use App\Http\Requests\Debate\TeamRosterRequest;
 use App\Http\Resources\DebateDetailResource;
 use App\Http\Resources\DebateParticipantResource;
 use App\Http\Resources\DebateResource;
-use App\Http\Resources\DebateResultResource;
 use App\Http\Resources\PublicUserResource;
 use App\Models\Debate;
 use App\Models\DebateFormat;
 use App\Models\DebateParticipant;
-use App\Models\DebateResult;
 use App\Models\Feedbacks;
 use App\Models\Team;
 use App\Models\TeamMember;
 use App\Models\User;
+use App\Services\Push\DebateNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -616,59 +614,14 @@ class DebateController extends Controller
 
         if ($hasProp && $hasOpp && $hasJudge) {
             $debate->update(['status' => 'announced']);
+
+            // #1 — the SAME user-visible transition as the admin-announce path,
+            // which already notifies. Previously this route (a team completing
+            // its own roster) reached `announced` silently, so whether
+            // participants heard about it depended on how the lineup happened
+            // to be filled.
+            app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
         }
     }
 
-    public function submitResult(SubmitResultRequest $request, Debate $debate): JsonResponse
-    {
-        $user = $request->user();
-
-        if ($debate->status !== 'live') {
-            return $this->error(
-                'يمكن تقديم النتائج فقط للنقاشات الجارية. | Results can only be submitted for live debates.',
-                [],
-                422
-            );
-        }
-
-        $isChairJudge = DebateParticipant::where('debate_id', $debate->id)
-            ->where('user_id', $user->id)
-            ->where('role', 'judge')
-            ->where('is_chair', true)
-            ->where('status', 'approved')
-            ->exists();
-
-        if (! $isChairJudge) {
-            return $this->error(
-                'فقط قاضي الرئاسة يمكنه تقديم النتائج. | Only the chair judge can submit results.',
-                [],
-                403
-            );
-        }
-
-        if ($debate->result()->exists()) {
-            return $this->error('تم تقديم النتائج بالفعل لهذا النقاش. | Results already submitted.', [], 409);
-        }
-
-        $result = DB::transaction(function () use ($request, $debate, $user) {
-            $result = DebateResult::create([
-                'debate_id'     => $debate->id,
-                'judge_id'      => $user->id,
-                'winning_side'  => $request->winning_side,
-                'scores'        => $request->scores,
-                'summary_notes' => $request->summary_notes,
-                'submitted_at'  => now(),
-            ]);
-
-            $debate->update(['status' => 'completed', 'ended_at' => now()]);
-
-            return $result;
-        });
-
-        return $this->success(
-            new DebateResultResource($result->load('judge')),
-            'تم تقديم النتائج. | Results submitted.',
-            201
-        );
-    }
 }

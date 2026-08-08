@@ -39,34 +39,70 @@ final class PushType
     private const DIGEST_BODY_AR = 'اطّلع على أحدث ما نُشر في مدونة جدل.';
 
     /**
+     * #1 `:stage_label` — keyed on the raw `debates.status` enum value
+     * (BACKEND_STAGE_LABELS.md §1).
+     *
+     * These are NOT the app's filter-tab captions and must not be replaced with
+     * them: tab captions are standalone nouns ("Registration", "Done") that
+     * read badly inside the sentence frame. These are rewritten to fit
+     * "«X» is now …".
+     *
+     * The Arabic is deliberately in the FEMININE form to agree with مناظرة.
+     * If these are ever reused in a different sentence frame, the agreement
+     * has to be rechecked — they are not gender-neutral tokens.
+     */
+    private const STAGE_LABELS = [
+        'scheduled'      => ['en' => 'open for registration', 'ar' => 'مفتوحة للتسجيل'],
+        'announced'      => ['en' => 'announced',             'ar' => 'معلنة'],
+        'teams-selected' => ['en' => 'in preparation',        'ar' => 'في مرحلة التحضير'],
+        'live'           => ['en' => 'live',                  'ar' => 'مباشرة'],
+        'completed'      => ['en' => 'finished',              'ar' => 'منتهية'],
+        'cancelled'      => ['en' => 'cancelled',             'ar' => 'ملغاة'],
+    ];
+
+    /**
      * type => [deep_link, and either flat ar/en, or a `variants` map]
      */
     public static function catalogue(): array
     {
         return [
             /**
-             * #1 — uses the handoff's §4.2 "1f" FALLBACK row, not the
-             * :stage_label row. There is no localized human-readable name for
-             * a debate status anywhere in this codebase (statuses are raw
-             * enum strings like `teams-selected`, and the project has no
-             * localization layer at all), so :stage_label would mean inventing
-             * a 12-string ar/en status map the frontend has not supplied.
-             * See HANDOFF_TO_ARCHITECT.md for the full reasoning.
+             * #1 — now names the stage, using the labels the frontend supplied
+             * (BACKEND_STAGE_LABELS.md §1).
              *
-             * TODO: switch to the non-fallback row if a localized status label
-             * is ever introduced — the copy is already agreed:
-             *   en  «:debate_title» is now :stage_label.
-             *   ar  «:debate_title» أصبحت الآن :stage_label.
+             * `:stage_label` cannot be resolved by the caller: one
+             * `$replacements` array is shared across every recipient device,
+             * and those devices may be in different languages. So the RAW
+             * status is passed in and the label is looked up per-locale inside
+             * copy() — see below.
+             *
+             * The `fallback` row is retained as a safety net for a status with
+             * no label (e.g. a new enum value added later). Better a slightly
+             * vague notification than "«X» is now ." with a hole in it.
              */
             self::DEBATE_STATE_CHANGED => [
                 'deep_link' => 'debate_details',
-                'ar' => [
-                    'title' => 'تحديث المناظرة',
-                    'body'  => '«:debate_title» انتقلت إلى مرحلة جديدة. اضغط للتفاصيل.',
-                ],
-                'en' => [
-                    'title' => 'Debate update',
-                    'body'  => '«:debate_title» has moved to a new stage. Tap for details.',
+                'variants'  => [
+                    'labelled' => [
+                        'ar' => [
+                            'title' => 'تحديث المناظرة',
+                            'body'  => '«:debate_title» أصبحت الآن :stage_label.',
+                        ],
+                        'en' => [
+                            'title' => 'Debate update',
+                            'body'  => '«:debate_title» is now :stage_label.',
+                        ],
+                    ],
+                    'fallback' => [
+                        'ar' => [
+                            'title' => 'تحديث المناظرة',
+                            'body'  => '«:debate_title» انتقلت إلى مرحلة جديدة. اضغط للتفاصيل.',
+                        ],
+                        'en' => [
+                            'title' => 'Debate update',
+                            'body'  => '«:debate_title» has moved to a new stage. Tap for details.',
+                        ],
+                    ],
                 ],
             ],
 
@@ -210,8 +246,19 @@ final class PushType
             return ['title' => '', 'body' => ''];
         }
 
+        // #1 — resolve :stage_label for THIS device's language. Done here
+        // rather than in the caller because a single $replacements array is
+        // shared across recipients whose devices may differ in locale.
+        if ($type === self::DEBATE_STATE_CHANGED) {
+            $label = self::stageLabel((string) ($replacements['status'] ?? ''), $locale);
+            if ($label !== null) {
+                $replacements['stage_label'] = $label;
+            }
+        }
+
         if (isset($entry['variants'])) {
             $variantKey = match ($type) {
+                self::DEBATE_STATE_CHANGED => isset($replacements['stage_label']) ? 'labelled' : 'fallback',
                 self::TEAM_JOIN_RESULT   => ($replacements['result'] ?? null) === 'accepted' ? 'accepted' : 'refused',
                 self::BLOG_WEEKLY_DIGEST => self::digestBucket((int) ($replacements['count'] ?? 0)),
                 default                  => array_key_first($entry['variants']),
@@ -233,6 +280,19 @@ final class PushType
             'title' => strtr($strings['title'], $map),
             'body'  => strtr($strings['body'], $map),
         ];
+    }
+
+    /**
+     * Localized stage name for a raw `debates.status` value, or null if the
+     * status has no label (which makes #1 fall back to the vaguer copy rather
+     * than rendering an empty slot).
+     */
+    public static function stageLabel(string $status, string $locale): ?string
+    {
+        $labels = self::STAGE_LABELS[$status] ?? null;
+
+        // Anything that is not explicitly Arabic falls back to English.
+        return $labels === null ? null : ($labels[$locale] ?? $labels['en']);
     }
 
     /**

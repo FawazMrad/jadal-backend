@@ -80,19 +80,13 @@ class AuthController extends Controller
     }
 
     /**
-     * Sprinkles §9 — support contact for the app's nav drawer. DB-backed
-     * singleton row (ContactInfoSeeder), so it's editable data rather than a
-     * deploy-time env value; riding on login avoids a second round-trip.
+     * Sprinkles §9 / MF_FU §2 — support contact for the app's nav drawer.
+     * DB-backed singleton row (ContactInfoSeeder), so it's editable data rather
+     * than a deploy-time env value; riding on login avoids a second round-trip.
      */
     private function supportContact(): array
     {
-        $contact = ContactInfo::current();
-
-        return [
-            'email'     => $contact?->email,
-            'phone'     => $contact?->phone,
-            'instagram' => $contact?->instagram,
-        ];
+        return ContactInfo::payload(ContactInfo::current());
     }
 
     // ── FR-2: Logout ──────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Stats\StatsFilterRequest;
+use App\Http\Requests\Stats\CoachTeamSummaryRequest;
 use App\Models\Team;
 use App\Models\TeamMember;
 use App\Models\User;
@@ -41,11 +41,29 @@ class CoachTeamSummaryController extends Controller
      * previous self/admin/stats_visible gate is gone. Any authenticated user
      * may read any coach's team summary.
      */
-    public function show(StatsFilterRequest $request, User $trainer): JsonResponse
+    public function show(CoachTeamSummaryRequest $request, User $trainer): JsonResponse
     {
         $f = StatsFilter::fromArray($request->validated());
 
         $teams = Team::where('created_by', $trainer->id)->where('is_random', false)->get();
+
+        // MF_FU §3.1a — optional narrowing to one team. Omitted keeps the
+        // all-teams average byte-for-byte as before. A team this coach does not
+        // train is a 403 rather than a 404 by explicit request: the id may well
+        // exist, and saying "not found" for someone else's team is a lie that
+        // also leaks less usefully than a plain refusal.
+        if ($request->filled('team_id')) {
+            $teamId = (int) $request->query('team_id');
+            $teams  = $teams->where('id', $teamId)->values();
+
+            if ($teams->isEmpty()) {
+                return $this->error(
+                    'غير مصرح. هذا الفريق ليس ضمن فرق هذا المدرب. | Unauthorized. That team is not coached by this trainer.',
+                    ['team_id' => $teamId],
+                    403
+                );
+            }
+        }
 
         $winRates = [];
         $avgScores = [];

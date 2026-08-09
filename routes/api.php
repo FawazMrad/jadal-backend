@@ -30,8 +30,10 @@ use App\Http\Controllers\Api\MotionController;
 use App\Http\Controllers\Api\MotionFrameworkController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\JudgeRatingStatsController;
 use App\Http\Controllers\Api\SurveyController;
 use App\Http\Controllers\Api\TeamController;
+use App\Http\Controllers\Api\TeamStatsController;
 use App\Http\Controllers\Api\Trainer\TrainerSurveyController;
 use Illuminate\Support\Facades\Route;
 
@@ -205,6 +207,21 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── V2 §7: coach + judge activity stats (attendance is deprecated below) ──
     Route::get('/trainers/{trainer}/stats/activity',   [ActivityStatsController::class, 'trainer'])  ->name('trainers.stats.activity');
     Route::get('/judges/{judge}/stats/activity',       [ActivityStatsController::class, 'judge'])    ->name('judges.stats.activity');
+
+    // MF_FU §5 — average rating a judge received from post-debate feedback.
+    Route::get('/judges/{judge}/stats/ratings', [JudgeRatingStatsController::class, 'show'])->name('judges.stats.ratings');
+
+    // MF_FU §3.1b — the coach's team picker (subject-scoped, unlike GET /teams).
+    Route::get('/trainers/{trainer}/teams', [UserProfileController::class, 'trainerTeams'])->name('trainers.teams');
+
+    // ── MF_FU §3.2 + §4 — per-team analytics (coach of the team, or admin) ────
+    Route::prefix('teams/{team}/stats')->name('teams.stats.')->group(function (): void {
+        Route::get('/win-rate',     [TeamStatsController::class, 'winRate'])     ->name('win-rate');
+        Route::get('/avg-score',    [TeamStatsController::class, 'avgScore'])    ->name('avg-score');
+        Route::get('/improvement',  [TeamStatsController::class, 'improvement']) ->name('improvement');
+        Route::get('/activity',     [TeamStatsController::class, 'activity'])    ->name('activity');
+        Route::get('/combinations', [TeamStatsController::class, 'combinations'])->name('combinations');
+    });
 
     // DEPRECATED (frontend spec §1.6) — see the note above.
     Route::get('/trainers/{trainer}/stats/attendance', GoneController::class)->name('trainers.stats.attendance');

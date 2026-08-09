@@ -20,6 +20,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Post-debate rating scale (MF_FU §5)
+    |--------------------------------------------------------------------------
+    |
+    | The 1..5 stars submitted via POST /feedback with type=rating_judgement or
+    | rating_debate. Must stay in step with StoreFeedbackRequest's
+    | scores.rating min/max rule — the judge-rating endpoint publishes this as
+    | `rating_scale` so the client renders the right number of stars instead of
+    | hardcoding it.
+    |
+    */
+    'rating_scale' => [
+        'min' => (int) env('DEBATE_RATING_MIN', 1),
+        'max' => (int) env('DEBATE_RATING_MAX', 5),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Statistics constants (improvement index)
     |--------------------------------------------------------------------------
     |
@@ -51,6 +68,15 @@ return [
 
         // Switch improvement granularity from monthly to yearly past this span.
         'improvement_month_to_year_span' => 24,
+
+        // Ceiling on zero-filled activity buckets (MF_FU §6.3), so an absurd
+        // from/to range can't generate an unbounded payload.
+        'max_zero_filled_buckets'      => 240,
+
+        // §4 — team combination analysis.
+        'combination_default_min_debates' => 2,
+        'combination_default_limit'       => 10,
+        'combination_max_limit'           => 50,
     ],
 
     /*

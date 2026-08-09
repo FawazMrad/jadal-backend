@@ -107,6 +107,11 @@ class UserProfileController extends Controller
     /**
      * Current teams: memberships with status=current (role member/leader) plus
      * — for trainers — active non-random teams they coach (teams.created_by).
+     *
+     * Random teams are excluded unconditionally. They are ad-hoc rosters the
+     * system fabricates so a solo debater can occupy a debate slot, not real
+     * memberships, and they must never surface on a profile. `is_random` is
+     * still emitted on every row so the exclusion is verifiable client-side.
      */
     public function teams(Request $request, User $user): JsonResponse
     {
@@ -114,7 +119,8 @@ class UserProfileController extends Controller
 
         $memberships = TeamMember::where('user_id', $user->id)
             ->where('status', 'current')
-            ->with('team:id,name,leader_id')
+            ->whereHas('team', fn ($q) => $q->where('is_random', false))
+            ->with('team:id,name,leader_id,is_random')
             ->get();
 
         foreach ($memberships as $m) {
@@ -125,6 +131,7 @@ class UserProfileController extends Controller
                 'team_id'   => (int) $m->team_id,
                 'team_name' => $m->team->name,
                 'role'      => (int) $m->team->leader_id === (int) $user->id ? 'leader' : 'member',
+                'is_random' => (bool) $m->team->is_random,
                 'joined_at' => $m->created_at?->toIso8601String(),
                 'left_at'   => null,
             ];
@@ -135,6 +142,7 @@ class UserProfileController extends Controller
                 'team_id'   => (int) $team->id,
                 'team_name' => $team->name,
                 'role'      => 'trainer',
+                'is_random' => (bool) $team->is_random,
                 'joined_at' => $team->created_at?->toIso8601String(),
                 'left_at'   => null,
             ];
@@ -157,7 +165,8 @@ class UserProfileController extends Controller
 
         $memberships = TeamMember::where('user_id', $user->id)
             ->where('status', 'past')
-            ->with('team:id,name,leader_id')
+            ->whereHas('team', fn ($q) => $q->where('is_random', false))
+            ->with('team:id,name,leader_id,is_random')
             ->get();
 
         foreach ($memberships as $m) {
@@ -168,6 +177,7 @@ class UserProfileController extends Controller
                 'team_id'   => (int) $m->team_id,
                 'team_name' => $m->team->name,
                 'role'      => 'member',
+                'is_random' => (bool) $m->team->is_random,
                 'joined_at' => $m->created_at?->toIso8601String(),
                 'left_at'   => $m->updated_at?->toIso8601String(),
             ];
@@ -178,6 +188,7 @@ class UserProfileController extends Controller
                 'team_id'   => (int) $team->id,
                 'team_name' => $team->name,
                 'role'      => 'trainer',
+                'is_random' => (bool) $team->is_random,
                 'joined_at' => $team->created_at?->toIso8601String(),
                 'left_at'   => $team->updated_at?->toIso8601String(),
             ];
@@ -209,6 +220,47 @@ class UserProfileController extends Controller
         );
     }
 
+    /**
+     * MF_FU §3.1b — GET /trainers/{trainer}/teams: the coach's team picker.
+     *
+     * This is NOT the same list as GET /teams. That one is scoped to the CALLER
+     * (a trainer sees their own teams, a debater sees teams to join), returns the
+     * full TeamResource, and does not filter random teams for trainers. This is
+     * scoped to the SUBJECT, so it works from a public profile, and returns the
+     * four fields the picker needs.
+     *
+     * Inactive teams are included and flagged, so a coach can still analyse a
+     * squad they have wound down.
+     */
+    public function trainerTeams(Request $request, User $trainer): JsonResponse
+    {
+        if (! in_array($trainer->role, ['trainer', 'admin'], true)) {
+            return $this->error(
+                'هذه القائمة متاحة للمدربين فقط. | This list is only available for trainers.',
+                ['role' => $trainer->role],
+                422
+            );
+        }
+
+        $teams = Team::where('created_by', $trainer->id)
+            ->where('is_random', false)
+            ->withCount(['teamMembers as members_count' => fn ($q) => $q->where('status', 'current')])
+            ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
+            ->orderBy('name')
+            ->get();
+
+        return $this->success(
+            $teams->map(fn (Team $t) => [
+                'id'            => (int) $t->id,
+                'name'          => $t->name,
+                'is_active'     => $t->status === 'active',
+                'members_count' => (int) $t->members_count,
+                'is_random'     => (bool) $t->is_random,
+            ])->values()->all(),
+            'تم جلب فرق المدرب. | Trainer teams retrieved.'
+        );
+    }
+
     /** Non-random teams this user coaches (created_by), filtered by status. */
     private function coachedTeams(User $user, string $status)
     {
@@ -219,6 +271,6 @@ class UserProfileController extends Controller
         return Team::where('created_by', $user->id)
             ->where('is_random', false)
             ->where('status', $status)
-            ->get(['id', 'name', 'created_at', 'updated_at']);
+            ->get(['id', 'name', 'is_random', 'created_at', 'updated_at']);
     }
 }

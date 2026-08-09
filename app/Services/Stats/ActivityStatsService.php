@@ -98,7 +98,7 @@ class ActivityStatsService
         }
 
         $buckets = [];
-        foreach ($this->bucketize($events, $f->groupBy) as $label => $bucketEvents) {
+        foreach ($this->bucketize($events, $f->groupBy, $f) as $label => $bucketEvents) {
             $buckets[] = [
                 'label'     => $label,
                 'value'     => round($bucketEvents->sum('points'), 2),
@@ -135,15 +135,51 @@ class ActivityStatsService
         return $out;
     }
 
-    /** @return array<string, Collection> chronologically ordered */
-    private function bucketize(Collection $events, string $groupBy): array
+    /**
+     * @return array<string, Collection> chronologically ordered, gap-free
+     *
+     * MF_FU §6.3 — quiet periods are emitted as zero-valued buckets rather than
+     * omitted. A trend line drawn from sparse buckets silently closes the gap
+     * over an inactive month and overstates the slope; the client should see the
+     * flat stretch. The filled span runs from `from` (or the first event) to
+     * `to` (or the last event), so an explicit range zero-fills its whole width
+     * even when there is no activity at either edge.
+     */
+    private function bucketize(Collection $events, string $groupBy, StatsFilter $f): array
     {
         if ($groupBy === 'none') {
             return $events->isEmpty() ? [] : ['all' => $events];
         }
 
         $fmt = $groupBy === 'year' ? 'Y' : 'Y-m';
+        $grouped = $events->groupBy(fn (array $e) => Carbon::parse($e['date'])->format($fmt))->sortKeys();
 
-        return $events->groupBy(fn (array $e) => Carbon::parse($e['date'])->format($fmt))->sortKeys()->all();
+        $dates = $events->map(fn (array $e) => Carbon::parse($e['date']));
+        $start = $f->fromDate()  ?? ($dates->isEmpty() ? null : $dates->min()->copy());
+        $end   = $f->toDateEnd() ?? ($dates->isEmpty() ? null : $dates->max()->copy());
+
+        if ($start === null || $end === null || $start->gt($end)) {
+            return $grouped->all();
+        }
+
+        $out = [];
+        $cursor = $start->copy()->startOfMonth();
+        $limit  = (int) config('debate.stats.max_zero_filled_buckets', 240);
+
+        while ($cursor->lte($end) && count($out) < $limit) {
+            $label = $cursor->format($fmt);
+            $out[$label] = $grouped->get($label, collect());
+            $cursor = $groupBy === 'year' ? $cursor->addYear() : $cursor->addMonth();
+        }
+
+        // Anything beyond the cap (a pathological range) still gets its real
+        // buckets appended rather than silently dropped.
+        foreach ($grouped as $label => $bucket) {
+            $out[$label] ??= $bucket;
+        }
+
+        ksort($out);
+
+        return $out;
     }
 }

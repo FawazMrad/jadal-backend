@@ -56,6 +56,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Shareable Debate Link Base URL
+    |--------------------------------------------------------------------------
+    |
+    | Base for the canonical per-debate share link exposed as
+    | live-state.debate.share_url  →  {base}/d/{id}
+    |
+    | Deliberately separate from APP_URL: the share link must point at the
+    | PUBLIC web domain that hosts the App Links / Universal Links
+    | .well-known files, which is not necessarily where the API is served.
+    | Falls back to APP_URL when unset, so nothing breaks before it is
+    | configured. Any trailing slash is trimmed at build time.
+    |
+    */
+
+    'frontend_share_base_url' => env('FRONTEND_SHARE_BASE_URL', env('APP_URL', 'http://localhost')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

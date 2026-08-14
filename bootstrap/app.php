@@ -24,10 +24,17 @@ return Application::configure(basePath: dirname(__DIR__))
          | role          — Guards a route by the user's `role` column.
          |                 Usage: role:admin  |  role:trainer  |  role:trainer,admin
          |
+         | auth.optional — Resolves a Sanctum user WHEN a bearer token is
+         |                 present, but lets a tokenless request through as a
+         |                 guest instead of 401ing. Used ONLY by the two
+         |                 guest-reachable debate endpoints; an invalid token
+         |                 is still a 401.
+         |
          */
         $middleware->alias([
-            'check.status' => \App\Http\Middleware\CheckUserStatus::class,
-            'role'         => \App\Http\Middleware\RoleMiddleware::class,
+            'check.status'  => \App\Http\Middleware\CheckUserStatus::class,
+            'role'          => \App\Http\Middleware\RoleMiddleware::class,
+            'auth.optional' => \App\Http\Middleware\OptionalSanctumAuth::class,
         ]);
 
         /*

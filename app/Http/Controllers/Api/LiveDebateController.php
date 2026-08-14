@@ -35,6 +35,17 @@ class LiveDebateController extends Controller
     {
         $user = $request->user();
 
+        // Guest mode §2 — this route is optionally authenticated, so a null user
+        // is a legitimate tokenless share-link caller rather than an error. Only
+        // guests are subject to the access window; an authenticated caller of
+        // ANY role reaches the unchanged path below at every point in the
+        // debate's lifecycle, including long after the guest window has closed.
+        $isGuest = $user === null;
+
+        if ($isGuest && ! $debate->isGuestAccessOpen()) {
+            return $this->guestWindowClosed();
+        }
+
         $debate->load([
             'format',
             'motion.frameworks',
@@ -43,14 +54,38 @@ class LiveDebateController extends Controller
             'result.judge',
         ]);
 
-        $myParticipant = $debate->participants
-            ->firstWhere('user_id', $user->id);
+        // Null-safe: a guest has no user id and therefore no participant row.
+        // The resource already treats a null participant as a viewer.
+        $myParticipant = $isGuest
+            ? null
+            : $debate->participants->firstWhere('user_id', $user->id);
 
         // Any authenticated user can read the live-state. Visibility of sensitive
         // bits (motion, result, joinable rooms) is enforced inside the resource.
         return $this->success(
-            new LiveStateResource($debate, $myParticipant),
+            new LiveStateResource($debate, $myParticipant, $isGuest),
             'Live state retrieved.'
+        );
+    }
+
+    /**
+     * Guest mode §Q4 — the single denial for a tokenless caller whose debate is
+     * outside the guest window (never live, or >10 min past terminal).
+     *
+     * 410 Gone rather than 403/404: the resource genuinely existed and was
+     * readable, and is now permanently gone for this caller — which is exactly
+     * what 410 means, and it lets the client show "this link is no longer
+     * valid" without conflating it with "you lack permission" (403, which the
+     * app would reasonably respond to by prompting for login) or "no such
+     * debate" (404). 403 is reserved for the locked prep/result rooms, where
+     * the caller is genuinely being refused rather than told it expired.
+     */
+    private function guestWindowClosed(): JsonResponse
+    {
+        return $this->error(
+            'لم يعد هذا النقاش متاحًا للضيوف. | This debate is no longer available to guests.',
+            [],
+            410
         );
     }
 
@@ -824,6 +859,11 @@ class LiveDebateController extends Controller
                 if ($debate->result_revealed_at === null) {
                     $updates['result_revealed_at'] = now();
                 }
+                // Terminal transition — anchors the guest read window (§Q4).
+                // Distinct from ended_at, which marks the end of the SPEECHES.
+                if ($debate->finalized_at === null) {
+                    $updates['finalized_at'] = now();
+                }
                 $debate->update($updates);
 
                 // Main room is gone — broadcast the reveal on the result room instead.
@@ -912,6 +952,10 @@ class LiveDebateController extends Controller
                 if ($debate->result_revealed_at === null) {
                     $updates['result_revealed_at'] = now();
                 }
+                // Terminal transition — anchors the guest read window (§Q4).
+                if ($debate->finalized_at === null) {
+                    $updates['finalized_at'] = now();
+                }
                 $debate->update($updates);
 
                 // V2 §3 — points system. Same eligibility bar the stats pipeline
@@ -926,7 +970,12 @@ class LiveDebateController extends Controller
                 }
             } else {
                 // No result → the chair aborted; cancel the debate.
-                $debate->update(['status' => 'cancelled', 'cancellation_reason' => 'manual']);
+                $debate->update([
+                    'status'              => 'cancelled',
+                    'cancellation_reason' => 'manual',
+                    // Terminal transition — anchors the guest read window (§Q4).
+                    'finalized_at'        => $debate->finalized_at ?? now(),
+                ]);
             }
 
             // Delete BOTH the main and result rooms AFTER the broadcasts so no one

@@ -65,6 +65,8 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->update([
                     'status'              => 'cancelled',
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
+                    // Terminal transition — anchors the guest read window (§Q4).
+                    'finalized_at'        => $now,
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants at motion reveal.");
                 // #1 — reaches nobody here by definition (the debate was still
@@ -128,6 +130,8 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->update([
                     'status'              => 'cancelled',
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
+                    // Terminal transition — anchors the guest read window (§Q4).
+                    'finalized_at'        => $now,
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants by start time.");
                 app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
@@ -151,6 +155,8 @@ class AdvanceDebatesLifecycle extends Command
                     $debate->update([
                         'status'              => 'cancelled',
                         'cancellation_reason' => 'no_judge_at_scheduled',
+                        // Terminal transition — anchors the guest read window (§Q4).
+                        'finalized_at'        => $now,
                     ]);
                     $this->warn("Debate {$debate->id}: cancelled — no approved judges.");
                     // The cancellation that matters most: this debate HAS

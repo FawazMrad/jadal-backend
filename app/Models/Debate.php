@@ -42,6 +42,7 @@ class Debate extends Model
         'prep_reminder_sent_at',
         'result_revealed_at',
         'speeches_completed_at',
+        'finalized_at',
         'live_started_at',
         'timer_is_paused',
         'timer_paused_elapsed_seconds',
@@ -63,6 +64,7 @@ class Debate extends Model
             'prep_reminder_sent_at' => 'datetime',
             'result_revealed_at'  => 'datetime',
             'speeches_completed_at' => 'datetime',
+            'finalized_at'        => 'datetime',
             'live_started_at'     => 'datetime',
             'timer_is_paused'     => 'boolean',
             'timer_paused_elapsed_seconds' => 'integer',
@@ -93,6 +95,52 @@ class Debate extends Model
     public function isInResultPhase(): bool
     {
         return $this->status === 'live' && $this->speeches_completed_at !== null;
+    }
+
+    /** The two statuses from which a debate never transitions again. */
+    public const TERMINAL_STATUSES = ['completed', 'cancelled'];
+
+    /** Minutes a guest may still read a debate after it reaches a terminal status. */
+    public const GUEST_GRACE_MINUTES = 10;
+
+    public function isTerminal(): bool
+    {
+        return in_array($this->status, self::TERMINAL_STATUSES, true);
+    }
+
+    /**
+     * Guest mode §Q4 — may a TOKENLESS caller read this debate right now?
+     *
+     * Open while the debate is `live`, and for GUEST_GRACE_MINUTES after it
+     * reaches a terminal status. Everything before `live` (scheduled, announced,
+     * teams-selected) is closed: there is no room to spectate yet, and a share
+     * link must not expose an unstarted debate's roster to the whole internet.
+     *
+     * This gate is for guests ONLY. Authenticated callers are never subject to
+     * it — see LiveDebateController::state / LiveKitController::getToken, which
+     * only consult this on the null-user branch.
+     *
+     * The window is anchored on `finalized_at`. Legacy rows that predate that
+     * column fall back to `updated_at`; they are terminal and long past the
+     * window either way, so the fallback only ever resolves to "closed".
+     */
+    public function isGuestAccessOpen(): bool
+    {
+        if ($this->status === 'live') {
+            return true;
+        }
+
+        if (! $this->isTerminal()) {
+            return false;
+        }
+
+        $finalizedAt = $this->finalized_at ?? $this->updated_at;
+
+        if ($finalizedAt === null) {
+            return false;
+        }
+
+        return $finalizedAt->copy()->addMinutes(self::GUEST_GRACE_MINUTES)->isFuture();
     }
 
     /**

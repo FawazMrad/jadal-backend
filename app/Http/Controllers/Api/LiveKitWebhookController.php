@@ -49,7 +49,7 @@ class LiveKitWebhookController extends Controller
         $roomName = $payload['room']['name'] ?? null;
         $identity = $payload['participant']['identity'] ?? null;
 
-        if (! $roomName || ! $identity) {
+        if (! $roomName || ! $identity || $this->isGuestIdentity($identity)) {
             return;
         }
 
@@ -122,7 +122,7 @@ class LiveKitWebhookController extends Controller
         $roomName = $payload['room']['name'] ?? null;
         $identity = $payload['participant']['identity'] ?? null;
 
-        if (! $roomName || ! $identity) {
+        if (! $roomName || ! $identity || $this->isGuestIdentity($identity)) {
             return;
         }
 
@@ -404,6 +404,27 @@ class LiveKitWebhookController extends Controller
                 }
             }
         }
+    }
+
+    /**
+     * Guest mode §Q5 — a guest's LiveKit identity is `guest-<uuid>`, which is
+     * not a user id and must never be treated as one.
+     *
+     * Both join/leave handlers cast the identity with `(int) $identity`, which
+     * yields 0 for any non-numeric string. That 0 finds no participant row, so
+     * the handler falls through to the viewer path and attempts
+     * `DebateViewer::insertOrIgnore(['user_id' => 0, …])`. debate_viewers.user_id
+     * is a FK to users.id, so that violates the constraint and is only silently
+     * discarded because insertOrIgnore emits INSERT IGNORE. It no-ops today by
+     * accident; this guard makes it deterministic and self-documenting.
+     *
+     * Guests are also issued `hidden` tokens, so LiveKit may not emit these
+     * events for them at all — this guard holds either way, and does not depend
+     * on that behaviour.
+     */
+    private function isGuestIdentity(string $identity): bool
+    {
+        return ! ctype_digit($identity);
     }
 
     private function findDebateByRoom(string $roomName): ?Debate

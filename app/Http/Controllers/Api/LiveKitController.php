@@ -9,6 +9,7 @@ use App\Models\Team;
 use App\Services\LiveKitService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class LiveKitController extends Controller
 {
@@ -27,6 +28,13 @@ class LiveKitController extends Controller
 
         if (! in_array($room, ['main', 'prop', 'opp', 'result'], true)) {
             return $this->error('Invalid room. Must be one of: main, prop, opp, result.', [], 422);
+        }
+
+        // Guest mode §4 — this route is optionally authenticated, so a null user
+        // is a legitimate tokenless share-link caller. Handled entirely in its
+        // own branch; everything below it is the untouched authenticated path.
+        if ($user === null) {
+            return $this->guestToken($debate, $room);
         }
 
         // The user's participant row (if any). Viewers/non-participants have none.
@@ -72,6 +80,80 @@ class LiveKitController extends Controller
             'url'         => config('services.livekit.url'),
             'room_name'   => $roomName,
             'role_in_room' => $roleInRoom,
+        ], 'تم إنشاء رمز الوصول. | Access token generated.');
+    }
+
+    // ── Guest (tokenless) token issuance ──────────────────────────────────────
+
+    /**
+     * Guest mode §4 — a spectator-only token for the MAIN room, and nothing else.
+     *
+     * Deliberately does NOT reuse resolveMainRoom(): that method grants a
+     * publish-capable free-for-all during the lobby (current_stage === 0), which
+     * would hand a guest a microphone. Guest grants are hard-coded and never
+     * derived from debate state, so no future change to the lobby rules can
+     * silently widen them.
+     */
+    private function guestToken(Debate $debate, string $room): JsonResponse
+    {
+        // §Q9 — prep and result rooms are never reachable without an account.
+        // Checked BEFORE the access window so the reason a guest is refused is
+        // the honest one ("this room is not for guests") rather than "expired".
+        if ($room !== 'main') {
+            return $this->error(
+                'هذه الغرفة غير متاحة للضيوف. | This room is not available to guests.',
+                [], 403
+            );
+        }
+
+        // §Q4 — same window the guest live-state endpoint applies.
+        if (! $debate->isGuestAccessOpen()) {
+            return $this->error(
+                'لم يعد هذا النقاش متاحًا للضيوف. | This debate is no longer available to guests.',
+                [], 410
+            );
+        }
+
+        // Room-open check reuses the authenticated path's own rule for the main
+        // room, and returns the SAME denial any non-joinable caller gets, per
+        // PART C — a guest is not given a bespoke "not open" error.
+        if ($debate->status !== 'live' || ! $debate->livekit_room_name) {
+            return $this->error(
+                'غير مصرح لك بالانضمام إلى هذه الغرفة. | You are not authorised to join this room.',
+                [], 403
+            );
+        }
+
+        $roomName = $debate->livekit_room_name;
+
+        try {
+            $this->liveKit->createRoomIfMissing($roomName);
+        } catch (\Throwable $e) {
+            return $this->error('Failed to provision LiveKit room: ' . $e->getMessage(), [], 503);
+        }
+
+        // §Q5 — a FRESH uuid per token request; never reused, never derived from
+        // anything about the caller. Non-numeric by construction, so it can
+        // never be mistaken for a user id by the webhook's `(int) $identity`.
+        $identity = 'guest-' . (string) Str::uuid();
+
+        $token = $this->liveKit->generateRoomToken(
+            roomName: $roomName,
+            identity: $identity,
+            canPublish: false,          // no mic, no camera — ever
+            canSubscribe: true,
+            canPublishData: false,      // no POI / timer / chat data events
+            canUpdateOwnMetadata: false,
+            roomAdmin: false,
+            displayName: null,          // no label to leak; they are hidden anyway
+            hidden: true,               // §Q7 — invisible to other participants
+        );
+
+        return $this->success([
+            'token'       => $token,
+            'url'         => config('services.livekit.url'),
+            'room_name'   => $roomName,
+            'role_in_room' => 'guest',
         ], 'تم إنشاء رمز الوصول. | Access token generated.');
     }
 

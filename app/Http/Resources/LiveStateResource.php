@@ -10,9 +10,17 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class LiveStateResource extends JsonResource
 {
+    /**
+     * @param  bool  $isGuest  Tokenless share-link caller (guest mode §3). Keeps
+     *   every key and type identical to the authenticated payload — the client
+     *   reuses one parser — while stripping PII (§3.3), omitting share_url
+     *   (§3.2, a guest may not re-share) and locking every room but `main`.
+     *   Defaults to false, so all pre-existing call sites are unaffected.
+     */
     public function __construct(
         private Debate $debate,
-        private DebateParticipant|null $myParticipant
+        private DebateParticipant|null $myParticipant,
+        private bool $isGuest = false
     ) {
         parent::__construct($debate);
     }
@@ -26,37 +34,7 @@ class LiveStateResource extends JsonResource
         $totalStages = $debate->phases->count();
 
         return [
-            'debate' => [
-                'id'                   => $debate->id,
-                'title'                => $debate->title,
-                'tag'                  => $debate->tag,
-                'status'               => $debate->status,
-                'scheduled_at'         => $debate->scheduled_at?->toIso8601String(),
-                'started_at'           => $debate->started_at?->toIso8601String(),
-                'ended_at'             => $debate->ended_at?->toIso8601String(),
-                'motion_revealed_at'   => $debate->motion_revealed_at?->toIso8601String(),
-                'prep_rooms_opened_at' => $debate->prep_rooms_opened_at?->toIso8601String(),
-                'result_revealed_at'   => $debate->result_revealed_at?->toIso8601String(),
-                'cancellation_reason'  => $debate->cancellation_reason,
-                'current_stage'        => $debate->current_stage,
-                // Server start time of the stage currently in progress, so a client
-                // that joins mid-speech can sync its timer instead of restarting at 0.
-                'current_stage_started_at' => $this->currentStageStartedAt($debate)?->toIso8601String(),
-                // Set when the chair advances past the last speech. While status is
-                // STILL `live`, this is the canonical "speeches done / result room
-                // open" signal — drive the result-room UI off this, NOT off status.
-                'speeches_completed_at' => $debate->speeches_completed_at?->toIso8601String(),
-                // V11 §1 — intro phase marker (live, chair welcome, pre-speech).
-                'live_started_at'       => $debate->live_started_at?->toIso8601String(),
-                // V11 §0 — server-authoritative timer. Clients compute:
-                //   elapsed = timer_is_paused
-                //           ? timer_paused_elapsed_seconds
-                //           : (clientNow + (server_now - clientNow)) - current_stage_started_at
-                // `server_now` is the server clock at response time, for the offset.
-                'server_now'            => now()->toIso8601String(),
-                'timer_is_paused'       => (bool) $debate->timer_is_paused,
-                'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
-            ],
+            'debate' => $this->buildDebateBlock($debate),
 
             // Sprinkles §7 — superset of the debate-list/detail format object, so
             // one client-side parser covers both. Offsets are FLOAT HOURS
@@ -89,6 +67,75 @@ class LiveStateResource extends JsonResource
 
             'result' => $this->buildResult($debate, $request),
         ];
+    }
+
+    /**
+     * The `debate` block. Built as its own method because `share_url` must be
+     * ABSENT — not null — for a guest, which is clearer as an explicit
+     * conditional than as a nested optional-key helper.
+     */
+    private function buildDebateBlock(Debate $debate): array
+    {
+        $block = [
+                'id'                   => $debate->id,
+                'title'                => $debate->title,
+                'tag'                  => $debate->tag,
+                'status'               => $debate->status,
+                'scheduled_at'         => $debate->scheduled_at?->toIso8601String(),
+                'started_at'           => $debate->started_at?->toIso8601String(),
+                'ended_at'             => $debate->ended_at?->toIso8601String(),
+                'motion_revealed_at'   => $debate->motion_revealed_at?->toIso8601String(),
+                'prep_rooms_opened_at' => $debate->prep_rooms_opened_at?->toIso8601String(),
+                'result_revealed_at'   => $debate->result_revealed_at?->toIso8601String(),
+                'cancellation_reason'  => $debate->cancellation_reason,
+                'current_stage'        => $debate->current_stage,
+                // Server start time of the stage currently in progress, so a client
+                // that joins mid-speech can sync its timer instead of restarting at 0.
+                'current_stage_started_at' => $this->currentStageStartedAt($debate)?->toIso8601String(),
+                // Set when the chair advances past the last speech. While status is
+                // STILL `live`, this is the canonical "speeches done / result room
+                // open" signal — drive the result-room UI off this, NOT off status.
+                'speeches_completed_at' => $debate->speeches_completed_at?->toIso8601String(),
+                // V11 §1 — intro phase marker (live, chair welcome, pre-speech).
+                'live_started_at'       => $debate->live_started_at?->toIso8601String(),
+                // V11 §0 — server-authoritative timer. Clients compute:
+                //   elapsed = timer_is_paused
+                //           ? timer_paused_elapsed_seconds
+                //           : (clientNow + (server_now - clientNow)) - current_stage_started_at
+                // `server_now` is the server clock at response time, for the offset.
+                'server_now'            => now()->toIso8601String(),
+                'timer_is_paused'       => (bool) $debate->timer_is_paused,
+                'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
+        ];
+
+        // Guest mode §1.1 — the canonical, stable, copy-to-clipboard link for
+        // this debate, built entirely server-side so the client never
+        // concatenates anything.
+        //
+        // Added ONLY for an authenticated caller: for a guest the key is absent
+        // entirely rather than null, because a guest must not be able to
+        // re-share. There is no `share_token` counterpart — §Q1 chose the
+        // public-read model, so the URL carries no credential.
+        if (! $this->isGuest) {
+            $block['share_url'] = $this->shareUrl($debate);
+        }
+
+        return $block;
+    }
+
+    /**
+     * Guest mode §1.1 / §Q2 — the canonical share link: {base}/d/{id}.
+     *
+     * Stable per debate (a pure function of the id — nothing rotates, nothing
+     * expires) and config-driven, so the public web domain can change without
+     * a code change. There is deliberately NO share token: §Q1 selected the
+     * public-read model, so the URL carries no credential.
+     */
+    private function shareUrl(Debate $debate): string
+    {
+        $base = config('app.frontend_share_base_url') ?: config('app.url');
+
+        return rtrim((string) $base, '/') . '/d/' . $debate->id;
     }
 
     /**
@@ -145,6 +192,38 @@ class LiveStateResource extends JsonResource
         // Result room is open during the result phase (speeches done, debate still
         // `live`). It is judges-only and stays open until close-room tears it down.
         $resultOpen = $debate->isInResultPhase();
+
+        // Guest mode §3.1 — a guest may join ONLY the main room, and only while
+        // it is open. Every other room is hard-locked regardless of the debate's
+        // state, so no prep/result room ever becomes reachable without a token.
+        if ($this->isGuest) {
+            return [
+                'main' => [
+                    'name'            => $debate->livekit_room_name,
+                    'open'            => $mainOpen,
+                    'joinable_for_me' => $mainOpen,
+                    'role_if_joined'  => 'guest',
+                ],
+                'prop' => [
+                    'name'            => $debate->prop_room_name,
+                    'open'            => $prepOpen,
+                    'joinable_for_me' => false,
+                    'role_if_joined'  => null,
+                ],
+                'opp' => [
+                    'name'            => $debate->opp_room_name,
+                    'open'            => $prepOpen,
+                    'joinable_for_me' => false,
+                    'role_if_joined'  => null,
+                ],
+                'result' => [
+                    'name'            => $debate->result_room_name,
+                    'open'            => $resultOpen,
+                    'joinable_for_me' => false,
+                    'role_if_joined'  => null,
+                ],
+            ];
+        }
 
         // Any authenticated user can join the main room (participant or viewer),
         // both in lobby mode and during the debate.
@@ -220,7 +299,7 @@ class LiveStateResource extends JsonResource
             ->map(fn ($j) => [
                 'id'          => $j->id,
                 'user'        => $j->relationLoaded('user')
-                    ? new PublicUserResource($j->user)
+                    ? new PublicUserResource($j->user, $this->isGuest)
                     : null,
                 'judge_order' => $j->judge_order,
                 'is_chair'    => (bool) $j->is_chair,
@@ -274,15 +353,19 @@ class LiveStateResource extends JsonResource
             })
             ->all();
 
+        $memberUsers = $participants->filter(fn ($p) => $p->relationLoaded('user') && $p->user)
+            ->map(fn ($p) => $p->user)
+            ->values();
+
         return [
             'team'     => $team,
             'is_random' => $isRandom,
-            'members'  => PublicUserResource::collection(
-                $participants->filter(fn ($p) => $p->relationLoaded('user') && $p->user)
-                    ->map(fn ($p) => $p->user)
-                    ->values()
-            ),
-            'speakers'       => DebateParticipantResource::collection($speakers),
+            'members'  => $this->isGuest
+                ? PublicUserResource::guestCollection($memberUsers)
+                : PublicUserResource::collection($memberUsers),
+            'speakers' => $this->isGuest
+                ? DebateParticipantResource::guestCollection($speakers)
+                : DebateParticipantResource::collection($speakers),
             'speaking_order' => $speakingOrder,
         ];
     }
@@ -310,7 +393,9 @@ class LiveStateResource extends JsonResource
         return [
             'team'           => $teamModel ? new \App\Http\Resources\TeamResource($teamModel) : null,
             'is_random'      => (bool) $teamModel?->is_random,
-            'members'        => PublicUserResource::collection($members),
+            'members'        => $this->isGuest
+                ? PublicUserResource::guestCollection($members)
+                : PublicUserResource::collection($members),
             'speakers'       => [],
             'speaking_order' => [],
         ];
@@ -407,14 +492,17 @@ class LiveStateResource extends JsonResource
             return null;
         }
 
-        $user           = $request->user();
-        $isJudge        = $this->myParticipant && $this->myParticipant->role === 'judge';
+        // A guest is never a judge, so they fall through the same gate as any
+        // non-judge: null before reveal, the public summary after (§Q6).
+        $isJudge        = ! $this->isGuest
+            && $this->myParticipant
+            && $this->myParticipant->role === 'judge';
         $isResultPublic = $debate->result_revealed_at !== null;
 
         if (! $isResultPublic && ! $isJudge) {
             return null;
         }
 
-        return new DebateResultResource($result);
+        return new DebateResultResource($result, $this->isGuest);
     }
 }

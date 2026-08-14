@@ -13,9 +13,14 @@ use Tests\TestCase;
  *
  * This route used to live inside the role:admin,trainer group and was gated on
  * created_by only, so a debater viewing their own team was rejected by the
- * role middleware before the controller even ran. Read access is now the
- * trainer who created it, the leader, or a current member — while every WRITE
- * endpoint stays restricted to created_by.
+ * role middleware before the controller even ran. It was then widened to the
+ * trainer who created it, the leader, or a current member.
+ *
+ * Guest mode §6 widened it again: ANY authenticated user may now read a team,
+ * because opening a team from search otherwise showed a bare name and no
+ * roster. What a non-member receives is narrowed instead of refused — the same
+ * shape, with contact details nulled (see GuestModeTest). Every WRITE endpoint
+ * remains restricted to created_by.
  */
 class TeamShowTest extends TestCase
 {
@@ -88,7 +93,11 @@ class TeamShowTest extends TestCase
             ->assertJsonPath('data.id', $team->id);
     }
 
-    public function test_past_member_is_forbidden(): void
+    /**
+     * §6 — a past member now READS the team (they used to get a 403), but
+     * without contact details.
+     */
+    public function test_past_member_can_view_without_contact_details(): void
     {
         $trainer = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
         $leader  = User::factory()->create(['role' => 'debater', 'status' => 'active']);
@@ -100,10 +109,17 @@ class TeamShowTest extends TestCase
             'priority' => 3, 'status' => 'past',
         ]);
 
-        $this->actingAs($former)->getJson("/api/teams/{$team->id}")->assertStatus(403);
+        $this->actingAs($former)->getJson("/api/teams/{$team->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.id', $team->id)
+            ->assertJsonPath('data.leader.email', null);
     }
 
-    public function test_unrelated_users_are_forbidden(): void
+    /**
+     * §6 — the whole point of the change: an unrelated authenticated user gets
+     * the roster instead of a 403. Contact details stay withheld.
+     */
+    public function test_unrelated_users_can_view_roster_without_contact_details(): void
     {
         $trainer = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
         $leader  = User::factory()->create(['role' => 'debater', 'status' => 'active']);
@@ -111,8 +127,17 @@ class TeamShowTest extends TestCase
 
         foreach (['debater', 'trainer', 'judge'] as $role) {
             $outsider = User::factory()->create(['role' => $role, 'status' => 'active']);
-            $this->actingAs($outsider)->getJson("/api/teams/{$team->id}")
-                ->assertStatus(403);
+
+            $res = $this->actingAs($outsider)->getJson("/api/teams/{$team->id}")
+                ->assertStatus(200)
+                ->assertJsonPath('data.id', $team->id);
+
+            // The roster is visible …
+            $this->assertNotEmpty($res->json('data.members'));
+            $this->assertSame($leader->name, $res->json('data.members.0.user.name'));
+            // … but contact details are not.
+            $this->assertNull($res->json('data.members.0.user.email'));
+            $this->assertNull($res->json('data.members.0.user.phone'));
         }
     }
 

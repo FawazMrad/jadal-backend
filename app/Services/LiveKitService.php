@@ -113,7 +113,8 @@ class LiveKitService
         bool $canPublishData,
         bool $canUpdateOwnMetadata = false,
         bool $roomAdmin = false,
-        ?string $displayName = null
+        ?string $displayName = null,
+        bool $hidden = false
     ): string {
         $grant = new VideoGrant();
         $grant->setRoomJoin(true);
@@ -129,6 +130,23 @@ class LiveKitService
         }
         if ($roomAdmin && method_exists($grant, 'setRoomAdmin')) {
             $grant->setRoomAdmin(true);
+        }
+
+        // Guest mode §Q7 — TRUE invisibility, not a client-side cosmetic filter.
+        //
+        // `hidden` maps to LiveKit's ParticipantPermission.hidden (protobuf
+        // field 7, "indicates that it's hidden to others"). The server omits
+        // such a participant from every other participant's room state and
+        // fires no participant-connected event for them — the same mechanism
+        // LiveKit uses for recorder/egress participants. The guest still
+        // subscribes normally; they simply are not in anyone else's roster.
+        //
+        // method_exists guard matches the pattern above: on an SDK too old to
+        // expose it the flag is skipped rather than fatal — in which case
+        // guests would become visible, so the guard is deliberately paired
+        // with a hard assertion in the test suite.
+        if ($hidden && method_exists($grant, 'setHidden')) {
+            $grant->setHidden(true);
         }
 
         $tokenOptions = (new AccessTokenOptions())

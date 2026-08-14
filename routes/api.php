@@ -76,6 +76,26 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
     });
 });
 
+// ── Guest-reachable debate endpoints (OPTIONAL auth) ──────────────────────────
+//
+// Guest mode §2 (Option A — public read by debate id). These are the ONLY two
+// routes in the API that accept a request with no bearer token. They are
+// deliberately registered OUTSIDE the `auth:sanctum` group above, because that
+// guard 401s a tokenless request before the controller can decide anything.
+//
+// `auth.optional` still resolves and enforces a bearer token when one IS sent
+// (and 401s an invalid one), so an authenticated caller's behaviour on these
+// two endpoints is byte-for-byte what it was — the controllers only branch on
+// $request->user() === null. `check.status` is retained and is null-safe, so a
+// suspended user is still rejected here.
+//
+// Route names are unchanged (debates.token / debates.live-state).
+Route::middleware(['auth.optional', 'check.status'])
+    ->prefix('debates')->name('debates.')->group(function (): void {
+        Route::get('/{debate}/token',      [LiveKitController::class, 'getToken'])->name('token');
+        Route::get('/{debate}/live-state', [LiveDebateController::class, 'state'])->name('live-state');
+    });
+
 // ── Authenticated + active users ──────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
 
@@ -153,7 +173,10 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/{debate}/registrations', [DebateController::class, 'registrations'])        ->name('registrations');
         Route::post('/{debate}/register',     [DebateController::class, 'register'])           ->name('register');
         Route::post('/{debate}/team-roster',  [DebateController::class, 'teamRoster'])         ->name('team-roster');
-        Route::get('/{debate}/token',         [LiveKitController::class, 'getToken'])          ->name('token');
+
+        // NOTE: /{debate}/token and /{debate}/live-state are NOT registered here.
+        // They are the two guest-reachable endpoints and live in the
+        // `auth.optional` group further down — see "Guest-reachable" below.
 
         // Sprinkles §2 — persistent team chat (team resolved server-side from
         // the caller's own participant row; additive to the peer team_chat event).
@@ -162,7 +185,6 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{debate}/chat/read',  [DebateChatController::class, 'markRead'])->name('chat.read');
 
         // Live session endpoints
-        Route::get('/{debate}/live-state',              [LiveDebateController::class, 'state'])          ->name('live-state');
         Route::post('/{debate}/team-speakers',          [LiveDebateController::class, 'setTeamSpeakers'])->name('team-speakers');
         Route::post('/{debate}/start-live',             [LiveDebateController::class, 'startLive'])      ->name('start-live');
         Route::post('/{debate}/next-stage',             [LiveDebateController::class, 'nextStage'])      ->name('next-stage');

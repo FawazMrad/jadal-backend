@@ -186,22 +186,35 @@ class TeamController extends Controller
     /**
      * Single-team detail — same payload as one item of GET /teams.
      *
-     * Readable by anyone with a legitimate stake in the team: the trainer who
-     * created it, its leader, or a current member. This is deliberately WIDER
-     * than ownsTeam() (created_by only), which still guards every write
-     * endpoint below — a member may read their own team, not edit it.
+     * Guest mode §6 — readable by ANY authenticated user. Previously limited to
+     * the trainer who created it, its leader, or a current member, which meant
+     * opening a team from search showed a bare name and a "not available"
+     * notice instead of the roster. The roster is the point of that screen.
+     *
+     * WRITE access is unaffected: ownsTeam() still guards every mutating
+     * endpoint below, and the join/leave-request endpoints keep their own
+     * checks. This widens WHO may read, never WHAT they may change.
+     *
+     * Inactive teams stay readable (there is no status filter here and none is
+     * added) — read-only visibility, per the spec's stated preference.
+     *
+     * Contact details are the one thing that does NOT widen: for a caller with
+     * no stake in the team, member/leader/coach email, phone and personal
+     * fields are nulled. The KEYS and their types are unchanged, so the
+     * client's existing Team parser needs no modification — only the values a
+     * stranger had never been entitled to are withheld. §6 explicitly permits
+     * keeping contact details restricted.
      *
      * A non-existent id 404s via route-model binding before this runs.
      */
     public function show(Request $request, Team $team): JsonResponse
     {
-        if (! $this->canViewTeam($request, $team)) {
-            return $this->error('غير مصرح. | Unauthorized.', [], 403);
-        }
-
         $team->load(['leader', 'createdBy', 'teamMembers.user']);
 
-        return $this->success(new TeamResource($team), 'تم جلب الفريق. | Team retrieved.');
+        return $this->success(
+            new TeamResource($team, ! $this->canViewTeam($request, $team)),
+            'تم جلب الفريق. | Team retrieved.'
+        );
     }
 
     // ── FR-29: Update team name or leader ─────────────────────────────────────

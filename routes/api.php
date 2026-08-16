@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Admin\AdminBlogController;
 use App\Http\Controllers\Api\Admin\AdminContactInfoController;
 use App\Http\Controllers\Api\Admin\AdminDebateController;
 use App\Http\Controllers\Api\Admin\AdminStatsController;
+use App\Http\Controllers\Api\Admin\BackupController;
 use App\Http\Controllers\Api\Admin\AdminSurveyController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\ActivityStatsController;
@@ -477,6 +478,31 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
 
             Route::get('/complaint-accountability',        [AdminStatsController::class, 'complaintAccountability'])       ->name('complaint-accountability');
             Route::get('/complaint-accountability/export', [AdminStatsController::class, 'complaintAccountabilityExport']) ->name('complaint-accountability.export');
+        });
+
+        // ── Database backup management (list / download / restore / delete) ──
+        //
+        // Backups themselves are produced by the weekly mysqldump cron; there is
+        // deliberately no create endpoint. The {filename} constraint mirrors
+        // BackupController::FILENAME_PATTERN so a traversal attempt never even
+        // reaches the controller — it 404s at the router. The controller still
+        // re-validates (422) so the rule holds if this constraint is relaxed.
+        Route::prefix('backups')->name('backups.')->group(function (): void {
+            Route::get('/', [BackupController::class, 'index'])->name('index');
+
+            Route::get('/{filename}/download', [BackupController::class, 'download'])
+                ->where('filename', '(?:jadal|safety_pre_restore)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz')
+                ->name('download');
+
+            // Destructive. Requires body {"confirm":"RESTORE"} and takes an
+            // automatic safety_pre_restore_* dump before overwriting anything.
+            Route::post('/{filename}/restore', [BackupController::class, 'restore'])
+                ->where('filename', '(?:jadal|safety_pre_restore)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz')
+                ->name('restore');
+
+            Route::delete('/{filename}', [BackupController::class, 'destroy'])
+                ->where('filename', '(?:jadal|safety_pre_restore)_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.sql\.gz')
+                ->name('destroy');
         });
     });
 });

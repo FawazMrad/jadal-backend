@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.jadalplatform.app",
+      "sha256_cert_fingerprints": [
+        "14:AE:C4:4B:AA:B3:41:2D:7C:8F:51:6E:BE:52:EC:64:D9:3F:4A:2B:8A:1E:8D:73:50:4D:41:11:87:E5:9E:80"
+      ]
+    }
+  }
+]

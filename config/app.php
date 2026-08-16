@@ -74,6 +74,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Mobile App Identity (App Links / share-link fallback)
+    |--------------------------------------------------------------------------
+    |
+    | android_package must match the `package_name` in
+    | public/.well-known/assetlinks.json — it is what the /d/{id} fallback
+    | page's `intent://` URI targets. If the two ever disagree, the "Open in
+    | the app" button silently stops working.
+    |
+    | The store URLs are NULL by default and the fallback page hides the store
+    | link entirely when they are unset. The app is not published yet, so
+    | shipping a hardcoded store URL would mean handing users a dead link.
+    | Set them once the listings exist.
+    |
+    */
+
+    'android_package'   => env('ANDROID_PACKAGE_NAME', 'com.jadalplatform.app'),
+    'android_store_url' => env('ANDROID_STORE_URL'),
+    'ios_store_url'     => env('IOS_STORE_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

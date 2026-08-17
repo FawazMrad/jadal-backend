@@ -14,8 +14,20 @@ use Illuminate\Support\Facades\DB;
 
 class MotionController extends Controller
 {
+    /** Matches the debates listing: default 20, hard ceiling 50. */
+    private const PER_PAGE_DEFAULT = 20;
+    private const PER_PAGE_MAX     = 50;
+
     public function index(SearchListRequest $request): JsonResponse
     {
+        // `per_page` was previously ignored entirely (paginate() was called with
+        // a hardcoded 20), so clients sending per_page=200/1000 silently got 20
+        // rows back. It is honoured now, but CLAMPED rather than validated: a
+        // 422 would break those existing callers the moment this shipped,
+        // whereas clamping just starts returning the sane maximum.
+        $perPage = (int) $request->input('per_page', self::PER_PAGE_DEFAULT);
+        $perPage = max(1, min($perPage, self::PER_PAGE_MAX));
+
         $motions = Motion::with(['addedBy', 'frameworks'])
             ->when(
                 $request->framework_id,
@@ -25,7 +37,12 @@ class MotionController extends Controller
                 $term = $request->input('search');
                 $q->where('text', 'LIKE', "%{$term}%");
             })
-            ->paginate(20);
+            // Newest first. Without an explicit ORDER BY, InnoDB returns rows in
+            // effectively primary-key order, so page 1 was the 20 OLDEST motions
+            // and a newly created one landed on the LAST page — invisible to any
+            // picker that reads only the first page.
+            ->orderByDesc('id')
+            ->paginate($perPage);
 
         return $this->paginated(MotionResource::collection($motions), $motions, 'تم جلب الحركات. | Motions retrieved.');
     }

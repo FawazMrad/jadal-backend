@@ -47,6 +47,11 @@ class LiveStateResource extends JsonResource
                 'speech_time_seconds'         => $config['speech_time_seconds'] ?? null,
                 'has_reply_speech'             => $config['has_reply_speech'] ?? false,
                 'reply_time_seconds'           => $config['reply_time_seconds'] ?? null,
+                // POI-closed window at the start AND end of a speech. Replaces
+                // the 60s the client was hard-coding. Null only on a format
+                // that predates the field and has not been normalised yet, in
+                // which case the client keeps its own fallback.
+                'protected_time_seconds'       => $config['protected_time_seconds'] ?? null,
                 'motion_reveal_offset_hours'   => $config['motion_reveal_offset_hours'] ?? null,
                 'prep_rooms_open_offset_hours' => $config['prep_rooms_open_offset_hours'] ?? null,
                 'speakers_per_side'            => DebateFormat::SPEAKERS_PER_SIDE,

@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\DebateFormat;
 
+use App\Models\DebateFormat;
+
 /**
  * Shared `phase_config` validation for the create and update requests.
  *
@@ -16,6 +18,33 @@ namespace App\Http\Requests\DebateFormat;
  */
 trait ValidatesPhaseConfig
 {
+    /**
+     * `protected_time_seconds` is newer than the other four timing keys, so a
+     * client that has not been updated yet simply omits it. Rather than 422-ing
+     * those callers, fill the platform default before validation runs — the
+     * column then always carries a real value and the app never has to fall
+     * back to its own hard-coded 60s.
+     *
+     * Two things this must NOT do:
+     *   - overwrite an explicit 0, which legitimately means "no protected
+     *     window", hence array_key_exists() rather than empty();
+     *   - touch a LIST payload, because adding a string key would turn it into
+     *     an associative array and slip it past phaseConfigShapeRule().
+     */
+    protected function prepareForValidation(): void
+    {
+        $config = $this->input('phase_config');
+
+        if (! is_array($config) || array_is_list($config)) {
+            return;
+        }
+
+        if (! array_key_exists('protected_time_seconds', $config)) {
+            $config['protected_time_seconds'] = DebateFormat::DEFAULT_PROTECTED_TIME_SECONDS;
+            $this->merge(['phase_config' => $config]);
+        }
+    }
+
     /**
      * Rejects the legacy array-of-phases shape with a message that says what is
      * actually wrong, rather than letting it surface as five confusing

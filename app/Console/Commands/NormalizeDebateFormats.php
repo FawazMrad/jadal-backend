@@ -141,7 +141,13 @@ class NormalizeDebateFormats extends Command
             return false;
         }
 
-        foreach (['speech_time_seconds', 'has_reply_speech', 'motion_reveal_offset_hours', 'prep_rooms_open_offset_hours'] as $key) {
+        foreach ([
+            'speech_time_seconds',
+            'has_reply_speech',
+            'protected_time_seconds',
+            'motion_reveal_offset_hours',
+            'prep_rooms_open_offset_hours',
+        ] as $key) {
             if (! array_key_exists($key, $config)) {
                 return false;
             }
@@ -208,6 +214,11 @@ class NormalizeDebateFormats extends Command
                 // 0 when there is no reply — matches DebateFormatSeeder, and the
                 // validator only bounds this field when has_reply_speech is true.
                 'reply_time_seconds'           => $hasReply ? $this->clamp((int) $reply, self::REPLY_MIN, self::REPLY_MAX) : 0,
+                // Backfilled with the value the app was hard-coding, so adopting
+                // it changes nothing about how debates already run. An existing
+                // value is always preserved.
+                'protected_time_seconds'       => $config['protected_time_seconds']
+                    ?? DebateFormat::DEFAULT_PROTECTED_TIME_SECONDS,
                 'motion_reveal_offset_hours'   => $config['motion_reveal_offset_hours'] ?? $revealOffset,
                 'prep_rooms_open_offset_hours' => $config['prep_rooms_open_offset_hours'] ?? $prepOffset,
             ],

@@ -12,6 +12,15 @@ class DebateFormat extends Model
 
     public const SPEAKERS_PER_SIDE = 3;
 
+    /**
+     * Protected period, in seconds — the window at the START and END of a
+     * speech during which no POI may be offered. 60s matches the value the
+     * Flutter client has been hard-coding, so adopting this default changes
+     * nothing about how existing debates run; it just moves the number from
+     * the app into configuration where an organiser can edit it.
+     */
+    public const DEFAULT_PROTECTED_TIME_SECONDS = 60;
+
     protected $fillable = [
         'name',
         'description',

@@ -20,6 +20,7 @@ class DebateFormatSeeder extends Seeder
                     'phase_config' => [
                         'speech_time_seconds'         => 420,
                         'has_reply_speech'             => true,
+                        'protected_time_seconds'       => 60,
                         'reply_time_seconds'           => 240,
                         'motion_reveal_offset_hours'   => 0.5,
                         'prep_rooms_open_offset_hours' => 0.5,
@@ -31,6 +32,7 @@ class DebateFormatSeeder extends Seeder
                     'phase_config' => [
                         'speech_time_seconds'         => 480,
                         'has_reply_speech'             => true,
+                        'protected_time_seconds'       => 60,
                         'reply_time_seconds'           => 240,
                         'motion_reveal_offset_hours'   => 24,
                         'prep_rooms_open_offset_hours' => 1,
@@ -42,6 +44,7 @@ class DebateFormatSeeder extends Seeder
                     'phase_config' => [
                         'speech_time_seconds'         => 420,
                         'has_reply_speech'             => true,
+                        'protected_time_seconds'       => 60,
                         'reply_time_seconds'           => 240,
                         'motion_reveal_offset_hours'   => 24,
                         'prep_rooms_open_offset_hours' => 1,
@@ -53,6 +56,7 @@ class DebateFormatSeeder extends Seeder
                     'phase_config' => [
                         'speech_time_seconds'         => 300,
                         'has_reply_speech'             => false,
+                        'protected_time_seconds'       => 60,
                         'reply_time_seconds'           => 0,
                         'motion_reveal_offset_hours'   => 1,
                         'prep_rooms_open_offset_hours' => 0.5,

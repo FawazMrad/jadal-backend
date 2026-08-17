@@ -53,4 +53,36 @@ class SearchMotionsTest extends TestCase
         $response = $this->actingAs($this->user())->getJson('/api/motions?search=a');
         $response->assertStatus(422);
     }
+
+    /**
+     * GET /motions is open to every authenticated user, so the motion author's
+     * contact details must not ride along. This previously published the
+     * admin's email, phone, birth date and location to any debater.
+     */
+    public function test_motion_author_contact_details_are_not_exposed(): void
+    {
+        $author = User::factory()->create([
+            'role'  => 'admin',
+            'email' => 'admin@example.test',
+            'phone' => '0932238253',
+        ]);
+
+        Motion::factory()->create(['text' => 'This house tests privacy', 'added_by' => $author->id]);
+
+        $addedBy = $this->actingAs($this->user())
+            ->getJson('/api/motions')
+            ->assertStatus(200)
+            ->json('data.0.added_by');
+
+        // Still identifiable …
+        $this->assertSame($author->id, $addedBy['id']);
+        $this->assertSame($author->name, $addedBy['name']);
+        $this->assertArrayHasKey('avatar_url', $addedBy);
+
+        // … but not contactable.
+        $this->assertNull($addedBy['email']);
+        $this->assertNull($addedBy['phone']);
+        $this->assertNull($addedBy['birth_date']);
+        $this->assertNull($addedBy['location']);
+    }
 }

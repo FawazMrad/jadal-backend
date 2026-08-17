@@ -66,12 +66,20 @@ class DebateController extends Controller
             });
         }
 
-        $sort = $request->input('sort', 'scheduled_asc');
+        // Newest first by default. Callers that still want oldest-first can ask
+        // for it explicitly with ?sort=scheduled_asc — that value stays valid.
+        $sort = $request->input('sort', 'scheduled_desc');
         match ($sort) {
-            'scheduled_desc' => $query->orderBy('scheduled_at', 'desc'),
-            'created_desc'   => $query->orderBy('created_at', 'desc'),
-            default          => $query->orderBy('scheduled_at', 'asc'),
+            'scheduled_asc' => $query->orderBy('scheduled_at', 'asc'),
+            'created_desc'  => $query->orderBy('created_at', 'desc'),
+            default         => $query->orderBy('scheduled_at', 'desc'),
         };
+
+        // Deterministic tiebreaker: debates sharing a scheduled_at (common —
+        // they are usually scheduled on the hour) would otherwise come back in
+        // arbitrary order, which lets a row repeat on one page and vanish from
+        // another as the client pages through.
+        $query->orderBy('id', 'desc');
 
         $perPage = (int) $request->input('per_page', 15);
         $debates = $query->paginate($perPage);

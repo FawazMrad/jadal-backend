@@ -36,7 +36,7 @@ class DefaultListingTest extends TestCase
         );
     }
 
-    public function test_default_sort_is_scheduled_ascending(): void
+    public function test_default_sort_is_scheduled_descending(): void
     {
         $user = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
 
@@ -46,7 +46,37 @@ class DefaultListingTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/debates');
 
         $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertEquals([$later->id, $sooner->id], $ids);
+    }
+
+    /** The old default is still reachable, so existing clients are not stranded. */
+    public function test_ascending_sort_is_still_available_explicitly(): void
+    {
+        $user = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
+
+        $later  = Debate::factory()->create(['status' => 'scheduled', 'scheduled_at' => now()->addDays(10)]);
+        $sooner = Debate::factory()->create(['status' => 'scheduled', 'scheduled_at' => now()->addDays(1)]);
+
+        $response = $this->actingAs($user)->getJson('/api/debates?sort=scheduled_asc');
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
         $this->assertEquals([$sooner->id, $later->id], $ids);
+    }
+
+    /** Rows sharing a scheduled_at must not reshuffle between paginated requests. */
+    public function test_ordering_is_deterministic_for_identical_timestamps(): void
+    {
+        $user = User::factory()->create(['role' => 'trainer', 'status' => 'active']);
+
+        $at = now()->addDays(2);
+        $a  = Debate::factory()->create(['status' => 'scheduled', 'scheduled_at' => $at]);
+        $b  = Debate::factory()->create(['status' => 'scheduled', 'scheduled_at' => $at]);
+        $c  = Debate::factory()->create(['status' => 'scheduled', 'scheduled_at' => $at]);
+
+        $ids = collect($this->actingAs($user)->getJson('/api/debates')->json('data'))
+            ->pluck('id')->all();
+
+        $this->assertEquals([$c->id, $b->id, $a->id], $ids);
     }
 
     public function test_per_page_is_capped_at_50(): void

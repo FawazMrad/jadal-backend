@@ -7,7 +7,7 @@ use App\Services\Push\DebateNotifier;
 use Illuminate\Console\Command;
 
 /**
- * Spec §7.2 #8 — weekly blog digest, sent ONLY if at least one article was
+ * Weekly blog digest, sent ONLY if at least one article was
  * published in the past week. Scheduled Saturday 18:00 Asia/Damascus (see
  * routes/console.php) because the debate week here starts Sunday.
  *
@@ -17,7 +17,7 @@ class SendBlogWeeklyDigest extends Command
 {
     protected $signature = 'push:blog-digest';
 
-    protected $description = 'Send the weekly blog digest push if any article was published in the past week (spec §7.2 #8).';
+    protected $description = 'Send the weekly blog digest push if any article was published in the past week.';
 
     public function handle(DebateNotifier $notifier): int
     {

@@ -11,7 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §3 — coach team-summary. */
+/** Coach team-summary. */
 class CoachTeamSummaryTest extends TestCase
 {
     use RefreshDatabase;
@@ -49,7 +49,7 @@ class CoachTeamSummaryTest extends TestCase
     }
 
     /**
-     * Frontend spec §6.4 — statistics are public, so the coach team summary is
+     * Statistics are public, so the coach team summary is
      * readable by any authenticated user. (This test previously asserted the
      * stranger got a 403 when the coach had opted out.)
      */

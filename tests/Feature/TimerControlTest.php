@@ -12,7 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * V11 §0 — server-authoritative timer: chair pause/resume persists and the
+ * server-authoritative timer: chair pause/resume persists and the
  * fields are exposed in live-state so any (re)joiner restores the exact clock.
  */
 class TimerControlTest extends TestCase

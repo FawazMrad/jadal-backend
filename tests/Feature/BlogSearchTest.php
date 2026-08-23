@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** Sprinkles §10 — blog search/filters + option-list endpoints. */
+/** Blog search/filters + option-list endpoints. */
 class BlogSearchTest extends TestCase
 {
     use RefreshDatabase;

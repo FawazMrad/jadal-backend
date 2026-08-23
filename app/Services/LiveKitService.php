@@ -132,7 +132,7 @@ class LiveKitService
             $grant->setRoomAdmin(true);
         }
 
-        // Guest mode §Q7 — TRUE invisibility, not a client-side cosmetic filter.
+        // TRUE invisibility, not a client-side cosmetic filter.
         //
         // `hidden` maps to LiveKit's ParticipantPermission.hidden (protobuf
         // field 7, "indicates that it's hidden to others"). The server omits

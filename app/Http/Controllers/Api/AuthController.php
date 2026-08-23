@@ -80,7 +80,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Sprinkles §9 / MF_FU §2 — support contact for the app's nav drawer.
+     * Support contact for the app's nav drawer.
      * DB-backed singleton row (ContactInfoSeeder), so it's editable data rather
      * than a deploy-time env value; riding on login avoids a second round-trip.
      */

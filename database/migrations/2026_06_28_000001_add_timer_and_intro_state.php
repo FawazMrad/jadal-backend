@@ -12,7 +12,7 @@ return new class extends Migration
         // the columns may already exist on an environment that ran an earlier
         // copy, so re-running must be a harmless no-op.
         Schema::table('debates', function (Blueprint $table) {
-            // V11 §1 — intro phase. Set when the chair takes the room "live" from
+            // Intro phase. Set when the chair takes the room "live" from
             // the open lobby while current_stage is still 0 (chair welcome, no
             // speech yet). A late joiner reads this to tell intro from open-lobby:
             //   current_stage >= 1            → a speech is running
@@ -22,7 +22,7 @@ return new class extends Migration
                 $table->timestamp('live_started_at')->nullable()->after('speeches_completed_at');
             }
 
-            // V11 §0 — server-authoritative timer. The clock is owned by the
+            // server-authoritative timer. The clock is owned by the
             // server; clients render `paused ? paused_elapsed : server_now -
             // current_stage_started_at` and keep only a cosmetic local tick.
             if (! Schema::hasColumn('debates', 'timer_is_paused')) {

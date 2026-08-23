@@ -10,7 +10,7 @@ use Database\Seeders\DemoProfileDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §6 — the data-seeding ask must run cleanly and be idempotent. */
+/** The data-seeding ask must run cleanly and be idempotent. */
 class DemoProfileDataSeederTest extends TestCase
 {
     use RefreshDatabase;

@@ -9,7 +9,7 @@ use App\Models\Device;
 use Illuminate\Http\JsonResponse;
 
 /**
- * FCM device registration (frontend spec §7.2.1).
+ * FCM device registration.
  *
  * Both endpoints are idempotent, because the app calls them on every login,
  * every token rotation, and every app-language switch.

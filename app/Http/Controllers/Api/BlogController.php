@@ -22,7 +22,7 @@ class BlogController extends Controller
     // ── List published articles (paginated, filterable) ───────────────────────
 
     /**
-     * Sprinkles §10 — the list endpoint doubles as the blog search: `q` matches
+     * The list endpoint doubles as the blog search: `q` matches
      * title OR content; category_id[]/tag_id[]/publisher_id[] are multi-select
      * (OR within a dimension, AND across dimensions); liked_by_me=true scopes
      * to the caller's own like reactions. The legacy slug-based ?category= and
@@ -98,7 +98,7 @@ class BlogController extends Controller
     }
 
     /**
-     * Sprinkles §10 — GET /blog/authors: users who have at least one published
+     * GET /blog/authors: users who have at least one published
      * post, for the publisher filter's option picker.
      */
     public function authors(): JsonResponse

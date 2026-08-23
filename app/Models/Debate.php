@@ -74,7 +74,7 @@ class Debate extends Model
     }
 
     /**
-     * Intro phase (V11 §1): the chair has taken the room live from the open
+     * Intro phase: the chair has taken the room live from the open
      * lobby (live_started_at set) but hasn't started the first speech yet
      * (current_stage still 0). Chair is in the main card; there is no timer.
      */
@@ -109,7 +109,7 @@ class Debate extends Model
     }
 
     /**
-     * Guest mode §Q4 — may a TOKENLESS caller read this debate right now?
+     * May a TOKENLESS caller read this debate right now?
      *
      * Open while the debate is `live`, and for GUEST_GRACE_MINUTES after it
      * reaches a terminal status. Everything before `live` (scheduled, announced,

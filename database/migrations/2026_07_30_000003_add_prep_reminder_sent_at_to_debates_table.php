@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Idempotency guard for the §7.2 #3 prep reminder. The reminder is a poll (see
+// Idempotency guard for the prep reminder. The reminder is a poll (see
 // SendPrepReminders for why), so without a "already sent" stamp it would fire
 // every minute for the whole hour before prep opens.
 return new class extends Migration

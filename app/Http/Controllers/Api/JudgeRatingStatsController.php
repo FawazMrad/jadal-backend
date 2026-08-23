@@ -10,12 +10,11 @@ use App\Services\Stats\StatsFilter;
 use Illuminate\Http\JsonResponse;
 
 /**
- * MF_FU §5 — GET /judges/{judge}/stats/ratings.
+ * GET /judges/{judge}/stats/ratings.
  *
- * Readable by any authenticated user, matching every other per-user stat since
- * frontend spec §6.4 made statistics public — the stats screen opens from
- * public profiles, so a self/admin gate would break it. The payload is
- * aggregate-only, so nothing about who rated what leaks.
+ * Readable by any authenticated user, matching every other per-user stat:
+ * these screens open from public profiles, so a self/admin gate would break
+ * them. The payload is aggregate-only, so nothing about who rated what leaks.
  */
 class JudgeRatingStatsController extends Controller
 {

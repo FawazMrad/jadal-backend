@@ -14,7 +14,7 @@ use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
- * V11 §0 — when the last judge leaves the MAIN room during an active speech the
+ * When the last judge leaves the MAIN room during an active speech the
  * server auto-pauses the timer (no client authority is left to trigger it).
  */
 class NoJudgeTimerPauseTest extends TestCase

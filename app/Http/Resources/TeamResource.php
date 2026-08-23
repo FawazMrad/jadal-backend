@@ -11,7 +11,7 @@ class TeamResource extends JsonResource
      * When true, contact/personal fields on every embedded user (leader,
      * coach, members) are nulled while all keys and types stay identical.
      * Set for GET /teams/{id} callers who are not the coach, the leader or a
-     * current member (§6).
+     * current member.
      *
      * Defaults to false, so all pre-existing call sites are unaffected.
      */

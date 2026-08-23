@@ -4,10 +4,10 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// V2 §3 — audit trail for every points award, per (subject, debate). Polymorphic
-// subject so one table covers both User and Team point changes. Kept
-// indefinitely — this is the "auditable" record the work order asked for so a
-// future "why did my points change" breakdown UI doesn't need retrofitting.
+// Audit trail for every points award, per (subject, debate). Polymorphic
+// subject so one table covers both User and Team point changes. Rows are kept
+// indefinitely so a "why did my points change" breakdown can be built later
+// without retrofitting the history.
 return new class extends Migration
 {
     public function up(): void

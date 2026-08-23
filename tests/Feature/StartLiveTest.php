@@ -11,7 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * V11 §1 — intro phase. The chair takes the room live from the open lobby:
+ * Intro phase. The chair takes the room live from the open lobby:
  * live_started_at is set while current_stage stays 0 (chair welcome, no speech).
  */
 class StartLiveTest extends TestCase

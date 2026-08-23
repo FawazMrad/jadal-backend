@@ -9,7 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Sprinkles §2 — persistent team chat with read receipts. */
+/** Persistent team chat with read receipts. */
 class DebateChatTest extends TestCase
 {
     use RefreshDatabase;

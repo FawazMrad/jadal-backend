@@ -7,7 +7,7 @@ use App\Models\ContactInfo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** V2 / MF_FU §2 — admin-editable support contact, served on login. */
+/** admin-editable support contact, served on login. */
 class AdminContactInfoController extends Controller
 {
     // ── GET /admin/contact-info ──────────────────────────────────────────────

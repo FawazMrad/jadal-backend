@@ -11,7 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * V10 §0 — every real participant in the main room must be granted
+ * Every real participant in the main room must be granted
  * canPublishData (the 5th arg to generateRoomToken). Without it the SFU drops
  * that participant's data-channel messages, so realtime signals (a debater's
  * POI, the chair's timer/lobby/mute) never reach the other devices.

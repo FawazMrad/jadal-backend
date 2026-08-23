@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Sprinkles §6.3 — achievements (read side + admin awarding).
+// Achievements (read side + admin awarding).
 return new class extends Migration
 {
     public function up(): void

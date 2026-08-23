@@ -34,7 +34,7 @@ use Illuminate\Support\Facades\DB;
  *   User::where('email','like','%@jadal-seed-test.local')->delete();
  *
  * ─── Why the debate-construction code below is duplicated ───────────────────
- * The brief asked to reuse ComprehensiveTestDataSeeder's methods directly.
+ * Reusing ComprehensiveTestDataSeeder's methods directly is not possible.
  * Every one of them (makeSpeakers / makeJudges / makePhasesAndScores /
  * makeResult / realisticScore) is declared `private`, so no separate class can
  * call them, and widening them would mean editing a second file. They are
@@ -71,7 +71,7 @@ class AnalyticsTopUpSeeder extends Seeder
     private const JUDGE_SPARSE   = 'judge2' . self::DOMAIN;
     private const TRAINER_BLAMED = 'trainer2' . self::DOMAIN;
 
-    /** Thresholds from the brief. */
+    /** Coverage thresholds this seeder tops up to. */
     private const TEAMS_TARGET          = 3;
     private const LARGEST_TEAM_MEMBERS  = 8;
     private const TEAM_DEBATES_TARGET   = 12;
@@ -1358,7 +1358,7 @@ class AnalyticsTopUpSeeder extends Seeder
             $this->command->table(['Entity', 'Created'], $rows);
         }
 
-        // ── verification of the thresholds the brief cares about ────────────
+        // ── verification of the coverage thresholds ────────────
         $trainer = $this->user(self::TRAINER_RICH);
         $judge   = $this->user(self::JUDGE_RICH);
         $team    = $this->largestTeam;

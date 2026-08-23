@@ -10,7 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * V2 §3 — no team-scoped equivalent of the debater stats API existed before
+ * No team-scoped equivalent of the debater stats API existed before
  * this. Deliberately scoped to single scalars (not the debater API's full
  * bucketed/series chart shape) since the only consumers are the leaderboard
  * (one all-time number per team) and the coach team-summary (one number per
@@ -166,7 +166,7 @@ class TeamStatsService
         })->values();
     }
 
-    // ── MF_FU §3.2 — bucketed shapes, byte-compatible with the debater API ─────
+    // ── Bucketed shapes, byte-compatible with the debater API ─────
 
     /** Bucketed win rate — same envelope DebaterStatsService::winRate returns. */
     public function winRateStat(Collection $rows, StatsFilter $f): array
@@ -300,7 +300,7 @@ class TeamStatsService
         ];
     }
 
-    // ── MF_FU §4 — line-up (combination) analysis ──────────────────────────────
+    // ── Line-up (combination) analysis ──────────────────────────────
 
     /**
      * Which set of speakers actually performs best.

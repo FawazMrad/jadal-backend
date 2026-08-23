@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V12 §2 — admin announce: judges + 2 teams (real or random) → announced. */
+/** Admin announce: judges + 2 teams (real or random) → announced. */
 class AnnounceDebateTest extends TestCase
 {
     use RefreshDatabase;

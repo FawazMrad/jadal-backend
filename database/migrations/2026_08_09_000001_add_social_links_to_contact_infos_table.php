@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// MF_FU §2 — the drawer footer became tappable, so each contact entry needs a
+// The drawer footer became tappable, so each contact entry needs a
 // value the client can build a URI from. The three existing columns stay
 // untouched (email/phone/instagram are still what the drawer prints); these are
 // the additional channels, all nullable because the drawer hides whatever is

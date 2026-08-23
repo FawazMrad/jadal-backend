@@ -7,7 +7,7 @@ use App\Services\Push\DebateNotifier;
 use Illuminate\Console\Command;
 
 /**
- * Spec §7.2 #3 — "one hour before preparation starts", debaters only.
+ * "one hour before preparation starts", debaters only.
  *
  * Implemented as a POLL rather than a per-debate scheduled job, deliberately:
  * a one-shot job would have to be cancelled and re-created every time a debate
@@ -26,7 +26,7 @@ use Illuminate\Console\Command;
  * opened the debate no longer matches, so a debate created after that point is
  * skipped rather than sent late.
  *
- * Rescheduling (frontend handoff §6) is handled: AdminDebateController::update()
+ * Rescheduling is handled: AdminDebateController::update()
  * clears prep_reminder_sent_at whenever scheduled_at or format_id changes, so
  * a moved debate re-arms and sends a fresh reminder for its new time. Moving a
  * debate earlier re-arms too — the old reminder is equally invalid either way.
@@ -35,7 +35,7 @@ class SendPrepReminders extends Command
 {
     protected $signature = 'push:prep-reminders';
 
-    protected $description = 'Send the one-hour-before-preparation push to debaters (spec §7.2 #3).';
+    protected $description = 'Send the one-hour-before-preparation push to debaters.';
 
     public function handle(DebateNotifier $notifier): int
     {

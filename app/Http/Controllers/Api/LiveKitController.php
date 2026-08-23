@@ -30,7 +30,7 @@ class LiveKitController extends Controller
             return $this->error('Invalid room. Must be one of: main, prop, opp, result.', [], 422);
         }
 
-        // Guest mode §4 — this route is optionally authenticated, so a null user
+        // This route is optionally authenticated, so a null user
         // is a legitimate tokenless share-link caller. Handled entirely in its
         // own branch; everything below it is the untouched authenticated path.
         if ($user === null) {
@@ -86,7 +86,7 @@ class LiveKitController extends Controller
     // ── Guest (tokenless) token issuance ──────────────────────────────────────
 
     /**
-     * Guest mode §4 — a spectator-only token for the MAIN room, and nothing else.
+     * A spectator-only token for the MAIN room, and nothing else.
      *
      * Deliberately does NOT reuse resolveMainRoom(): that method grants a
      * publish-capable free-for-all during the lobby (current_stage === 0), which
@@ -96,7 +96,7 @@ class LiveKitController extends Controller
      */
     private function guestToken(Debate $debate, string $room): JsonResponse
     {
-        // §Q9 — prep and result rooms are never reachable without an account.
+        // prep and result rooms are never reachable without an account.
         // Checked BEFORE the access window so the reason a guest is refused is
         // the honest one ("this room is not for guests") rather than "expired".
         if ($room !== 'main') {
@@ -106,7 +106,7 @@ class LiveKitController extends Controller
             );
         }
 
-        // §Q4 — same window the guest live-state endpoint applies.
+        // same window the guest live-state endpoint applies.
         if (! $debate->isGuestAccessOpen()) {
             return $this->error(
                 'لم يعد هذا النقاش متاحًا للضيوف. | This debate is no longer available to guests.',
@@ -132,7 +132,7 @@ class LiveKitController extends Controller
             return $this->error('Failed to provision LiveKit room: ' . $e->getMessage(), [], 503);
         }
 
-        // §Q5 — a FRESH uuid per token request; never reused, never derived from
+        // a FRESH uuid per token request; never reused, never derived from
         // anything about the caller. Non-numeric by construction, so it can
         // never be mistaken for a user id by the webhook's `(int) $identity`.
         $identity = 'guest-' . (string) Str::uuid();
@@ -146,7 +146,7 @@ class LiveKitController extends Controller
             canUpdateOwnMetadata: false,
             roomAdmin: false,
             displayName: null,          // no label to leak; they are hidden anyway
-            hidden: true,               // §Q7 — invisible to other participants
+            hidden: true,               // invisible to other participants
         );
 
         return $this->success([

@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Stats;
 
-/** MF_FU §3.1a — the shared stats filter plus an optional single-team narrowing. */
+/** The shared stats filter plus an optional single-team narrowing. */
 class CoachTeamSummaryRequest extends StatsFilterRequest
 {
     public function rules(): array

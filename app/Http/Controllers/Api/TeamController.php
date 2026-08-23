@@ -80,7 +80,7 @@ class TeamController extends Controller
         );
     }
 
-    // ── Sprinkles §8: light teams list for filter dialogs (any auth user) ──────
+    // ── Light teams list for filter dialogs (any auth user) ──────
 
     /**
      * GET /teams/options?is_random=0|1&status=active|inactive&search=
@@ -186,7 +186,7 @@ class TeamController extends Controller
     /**
      * Single-team detail — same payload as one item of GET /teams.
      *
-     * Guest mode §6 — readable by ANY authenticated user. Previously limited to
+     * Readable by ANY authenticated user. Previously limited to
      * the trainer who created it, its leader, or a current member, which meant
      * opening a team from search showed a bare name and a "not available"
      * notice instead of the roster. The roster is the point of that screen.
@@ -202,7 +202,7 @@ class TeamController extends Controller
      * no stake in the team, member/leader/coach email, phone and personal
      * fields are nulled. The KEYS and their types are unchanged, so the
      * client's existing Team parser needs no modification — only the values a
-     * stranger had never been entitled to are withheld. §6 explicitly permits
+     * stranger had never been entitled to are withheld. explicitly permits
      * keeping contact details restricted.
      *
      * A non-existent id 404s via route-model binding before this runs.
@@ -659,7 +659,7 @@ class TeamController extends Controller
             }
         });
 
-        // Spec §7.2 #7 — notify the applicant either way. Outside the
+        // Notify the applicant either way. Outside the
         // transaction: a push failure must never roll back the decision.
         app(DebateNotifier::class)->teamJoinResult(
             $team,

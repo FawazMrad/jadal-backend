@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V12 §1 — GET /debates/{debate}/registerable-teams */
+/** GET /debates/{debate}/registerable-teams */
 class RegisterableTeamsTest extends TestCase
 {
     use RefreshDatabase;

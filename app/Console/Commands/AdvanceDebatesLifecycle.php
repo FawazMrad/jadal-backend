@@ -57,7 +57,7 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->refresh();
                 $this->info("Debate {$debate->id}: motion revealed.");
 
-                // Spec §7.2 #4 — all participants, judges included.
+                // All participants, judges included.
                 app(DebateNotifier::class)->motionRevealed($debate);
             }
 
@@ -65,7 +65,7 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->update([
                     'status'              => 'cancelled',
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
-                    // Terminal transition — anchors the guest read window (§Q4).
+                    // Terminal transition — anchors the guest read window.
                     'finalized_at'        => $now,
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants at motion reveal.");
@@ -115,7 +115,7 @@ class AdvanceDebatesLifecycle extends Command
             $debate->refresh();
             $this->info("Debate {$debate->id}: prep rooms opened, status → {$newStatus}.");
 
-            // Spec §7.2 #1 — only on an actual transition (announced →
+            // Only on an actual transition (announced →
             // teams-selected), not on every prep-room open.
             if ($statusChanged) {
                 app(DebateNotifier::class)->debateStateChanged($debate);
@@ -130,7 +130,7 @@ class AdvanceDebatesLifecycle extends Command
                 $debate->update([
                     'status'              => 'cancelled',
                     'cancellation_reason' => 'no_participants_at_motion_reveal',
-                    // Terminal transition — anchors the guest read window (§Q4).
+                    // Terminal transition — anchors the guest read window.
                     'finalized_at'        => $now,
                 ]);
                 $this->warn("Debate {$debate->id}: cancelled — no participants by start time.");
@@ -155,7 +155,7 @@ class AdvanceDebatesLifecycle extends Command
                     $debate->update([
                         'status'              => 'cancelled',
                         'cancellation_reason' => 'no_judge_at_scheduled',
-                        // Terminal transition — anchors the guest read window (§Q4).
+                        // Terminal transition — anchors the guest read window.
                         'finalized_at'        => $now,
                     ]);
                     $this->warn("Debate {$debate->id}: cancelled — no approved judges.");

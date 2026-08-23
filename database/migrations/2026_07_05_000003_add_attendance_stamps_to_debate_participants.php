@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Sprinkles §6.5 — STICKY attendance stamps for historical stats.
+// STICKY attendance stamps for historical stats.
 //
 // The existing `is_attended` boolean is a LIVE presence flag: the webhook sets
 // it on join and CLEARS it on leave (chair election depends on that). It can

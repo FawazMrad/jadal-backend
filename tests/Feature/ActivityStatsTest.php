@@ -9,7 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §7 — participation/activity scoring: registration + attendance + viewing - penalty. */
+/** participation/activity scoring: registration + attendance + viewing - penalty. */
 class ActivityStatsTest extends TestCase
 {
     use RefreshDatabase;
@@ -122,7 +122,7 @@ class ActivityStatsTest extends TestCase
     }
 
     /**
-     * Frontend spec §6.4 — statistics are public for every user. The
+     * Statistics are public for every user. The
      * stats_visible opt-out is gone, so a stranger reads the same 200 the
      * owner does. (This test previously asserted the opposite.)
      */

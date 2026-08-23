@@ -35,7 +35,7 @@ class DebateChatMessage extends Model
         return $this->hasMany(DebateChatMessageRead::class, 'message_id');
     }
 
-    /** Wire shape shared by GET /chat and POST /chat (§2). */
+    /** Wire shape shared by GET /chat and POST /chat. */
     public function toWire(): array
     {
         return [

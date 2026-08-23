@@ -10,12 +10,16 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
-/** MF_FU §1, §2, §3.1 and §6 — the small, unblocking items. */
-class MfFuSmallItemsTest extends TestCase
+/**
+ * Profile, contact and coach-picker behaviours that span several endpoints:
+ * random-team exclusion, the derived contact links on login, the coach team
+ * picker, and activity zero-filling.
+ */
+class ProfileContactAndCoachPickerTest extends TestCase
 {
     use RefreshDatabase;
 
-    // ── §1: random teams never appear on a profile ─────────────────────────────
+    // ── Random teams never appear on a profile ─────────────────────────────
 
     public function test_random_teams_are_excluded_from_both_team_lists(): void
     {
@@ -56,7 +60,7 @@ class MfFuSmallItemsTest extends TestCase
             ->assertJsonCount(0, 'data');
     }
 
-    // ── §2: linkable contact ───────────────────────────────────────────────────
+    // ── Linkable contact ───────────────────────────────────────────────────
 
     public function test_login_contact_derives_e164_and_instagram_url_without_changing_legacy_keys(): void
     {
@@ -102,7 +106,7 @@ class MfFuSmallItemsTest extends TestCase
             ->assertJsonPath('data.contact.phone_e164', null);
     }
 
-    // ── §3.1: coach team picker + single-team summary ──────────────────────────
+    // ── Coach team picker + single-team summary ──────────────────────────
 
     public function test_trainer_teams_lists_active_and_inactive_but_not_random(): void
     {
@@ -158,7 +162,7 @@ class MfFuSmallItemsTest extends TestCase
             ->assertStatus(403);
     }
 
-    // ── §6: activity zero-fill, on every role variant ──────────────────────────
+    // ── Activity zero-fill, on every role variant ──────────────────────────
 
     #[DataProvider('activityRoutes')]
     public function test_activity_group_by_month_zero_fills(string $prefix, string $role): void

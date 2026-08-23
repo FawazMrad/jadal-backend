@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
- * Sprinkles §6.1–§6.4 — public user profiles.
+ * Public user profiles.
  *
- * Privacy decision (§6.1 open question): email and phone are visible only to
+ * Privacy decision: email and phone are visible only to
  * the profile owner and admins; everyone else gets the public fields only.
  */
 class UserProfileController extends Controller
@@ -23,7 +23,7 @@ class UserProfileController extends Controller
     /** How many achievements ride inline on the profile itself. */
     private const TOP_ACHIEVEMENTS = 4;
 
-    // ── §6.1: GET /users/{user} ─────────────────────────────────────────────────
+    // ──: GET /users/{user} ─────────────────────────────────────────────────
 
     public function show(Request $request, User $user): JsonResponse
     {
@@ -63,10 +63,10 @@ class UserProfileController extends Controller
         return $this->success($profile, 'تم جلب الملف الشخصي. | Profile retrieved.');
     }
 
-    // ── §6.3: GET /users/{user}/achievements ────────────────────────────────────
+    // ──: GET /users/{user}/achievements ────────────────────────────────────
 
     /**
-     * Spec §6.8 — the "show all" page groups by Date (default) or by Tier.
+     * The "show all" page groups by Date (default) or by Tier.
      * Server-side SORTING only; the client renders the section headers, so the
      * response shape and pagination are unchanged.
      *
@@ -102,7 +102,7 @@ class UserProfileController extends Controller
         );
     }
 
-    // ── §6.4: GET /users/{user}/teams ───────────────────────────────────────────
+    // ──: GET /users/{user}/teams ───────────────────────────────────────────
 
     /**
      * Current teams: memberships with status=current (role member/leader) plus
@@ -151,7 +151,7 @@ class UserProfileController extends Controller
         return $this->success($rows, 'تم جلب الفرق الحالية. | Current teams retrieved.');
     }
 
-    // ── §6.4: GET /users/{user}/teams/history ───────────────────────────────────
+    // ──: GET /users/{user}/teams/history ───────────────────────────────────
 
     /**
      * Past teams: memberships flipped to status=past (left/removed — rows are
@@ -197,7 +197,7 @@ class UserProfileController extends Controller
         return $this->success($rows, 'تم جلب سجل الفرق. | Team history retrieved.');
     }
 
-    // ── Sprinkles §8: GET /judges — option list for the search filter dialog ────
+    // ── GET /judges — option list for the search filter dialog ────
 
     public function judges(): JsonResponse
     {
@@ -221,7 +221,7 @@ class UserProfileController extends Controller
     }
 
     /**
-     * MF_FU §3.1b — GET /trainers/{trainer}/teams: the coach's team picker.
+     * GET /trainers/{trainer}/teams: the coach's team picker.
      *
      * This is NOT the same list as GET /teams. That one is scoped to the CALLER
      * (a trainer sees their own teams, a debater sees teams to join), returns the

@@ -3,15 +3,18 @@
 namespace App\Notifications;
 
 /**
- * The 8 push notification types (frontend spec §7.2) — the single source of
- * truth for the wire contract: type string, deep-link target, and the ar/en
- * copy with its placeholders.
+ * The push notification catalogue — the single source of truth for the wire
+ * contract: type string, deep-link target, and the ar/en copy with its
+ * placeholders.
  *
- * Copy is the frontend's, from BACKEND_PUSH_HANDOFF.md §4.2–§4.4, replacing the
- * backend's earlier first draft. Placeholders are `:name` style, substituted
- * via strtr(). Titles are kept short because Android truncates around 40 chars
- * in the collapsed shade; debate/survey titles are wrapped in «…» so a long
- * title stays visibly delimited from the sentence.
+ * Placeholders are `:name` style, substituted via strtr(). Titles are kept
+ * short because Android truncates around 40 characters in the collapsed
+ * shade; debate and survey titles are wrapped in «…» so a long title stays
+ * visibly delimited from the surrounding sentence.
+ *
+ * NOTE: `debate_created` is defined here but is never sent — see
+ * DebateNotifier::debateCreated() for why it was retired. Its copy is kept so
+ * the constant remains safe to reference.
  *
  * Two types have copy that varies by a DATA VALUE rather than only by
  * placeholders, so they carry a `variants` map instead of flat ar/en:
@@ -34,13 +37,13 @@ final class PushType
     public const TEAM_JOIN_RESULT     = 'team_join_result';
     public const BLOG_WEEKLY_DIGEST   = 'blog_weekly_digest';
 
-    /** Shared body for every #8 plural bucket (handoff §4.4). */
+    /** Shared body for every #8 plural bucket. */
     private const DIGEST_BODY_EN = "Catch up on what's new in the Jadal blog.";
     private const DIGEST_BODY_AR = 'اطّلع على أحدث ما نُشر في مدونة جدل.';
 
     /**
      * #1 `:stage_label` — keyed on the raw `debates.status` enum value
-     * (BACKEND_STAGE_LABELS.md §1).
+     *.
      *
      * These are NOT the app's filter-tab captions and must not be replaced with
      * them: tab captions are standalone nouns ("Registration", "Done") that
@@ -68,7 +71,7 @@ final class PushType
         return [
             /**
              * #1 — now names the stage, using the labels the frontend supplied
-             * (BACKEND_STAGE_LABELS.md §1).
+             *.
              *
              * `:stage_label` cannot be resolved by the caller: one
              * `$replacements` array is shared across every recipient device,
@@ -168,7 +171,7 @@ final class PushType
                 ],
             ],
 
-            // #7 — keyed on the `result` data value (handoff §4.3). The data
+            // #7 — keyed on the `result` data value. The data
             // payload itself is unchanged; this only selects which copy row
             // is used.
             self::TEAM_JOIN_RESULT => [
@@ -197,7 +200,7 @@ final class PushType
                 ],
             ],
 
-            // #8 — Arabic plural buckets (handoff §4.4). Body is identical
+            // #8 — Arabic plural buckets. Body is identical
             // across buckets; only the title changes. Count 0 never reaches
             // here (SendBlogWeeklyDigest skips the send entirely).
             self::BLOG_WEEKLY_DIGEST => [
@@ -296,7 +299,7 @@ final class PushType
     }
 
     /**
-     * Arabic plural bucket for the weekly digest (handoff §4.4):
+     * Arabic plural bucket for the weekly digest:
      * 1 → singular, 2 → dual, 3–10 → paucal, 11+ → the accusative singular
      * form Arabic uses after large numbers.
      */

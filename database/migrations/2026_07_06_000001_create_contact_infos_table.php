@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Sprinkles §9 (V1) — support contact shown in the app's nav drawer/login
+// Support contact shown in the app's nav drawer/login
 // response. DB-backed singleton (was env-config, now moved to a seeded row so
 // it's editable data rather than a deploy-time value).
 return new class extends Migration

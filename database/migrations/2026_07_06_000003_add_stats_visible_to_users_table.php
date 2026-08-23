@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// V2 §9 — opt-OUT visibility toggle, default true for all existing and new users.
+// opt-OUT visibility toggle, default true for all existing and new users.
 return new class extends Migration
 {
     public function up(): void

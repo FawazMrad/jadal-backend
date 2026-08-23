@@ -11,7 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Sprinkles §2 — persistent team chat with read receipts.
+ * Persistent team chat with read receipts.
  *
  * ADDITIVE to the existing peer `team_chat` data-channel event: clients keep
  * firing that for instant delivery and ALSO call POST here to persist. A

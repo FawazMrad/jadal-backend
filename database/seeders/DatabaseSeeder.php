@@ -67,7 +67,7 @@ class DatabaseSeeder extends Seeder
             // 13. Audit logs (depends on everything else)
             AuditLogSeeder::class,
 
-            // 14. V2 §6 — demo profile data (depends on users + teams existing)
+            // 14. V2 — demo profile data (depends on users + teams existing)
             DemoProfileDataSeeder::class,
         ]);
 

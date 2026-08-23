@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Admin stats §schema — a complaint can now name WHO it is about and in what
+// A complaint can now name WHO it is about and in what
 // capacity. Both nullable: every pre-existing row stays valid ("unattributed"
 // — excluded from per-person accountability figures but still counted in the
 // platform-wide unattributed total).

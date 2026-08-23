@@ -9,7 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Sprinkles §6.1–§6.4 — public user profile, achievements, team history. */
+/** Public user profile, achievements, team history. */
 class UserProfileTest extends TestCase
 {
     use RefreshDatabase;

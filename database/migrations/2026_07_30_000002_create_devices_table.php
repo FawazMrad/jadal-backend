@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Frontend spec §7 — FCM device registry for push delivery.
+// FCM device registry for push delivery.
 //
 // `token` is UNIQUE, not (user_id, token): an FCM token identifies a device
 // installation, and the same device can be handed to a different user (logout

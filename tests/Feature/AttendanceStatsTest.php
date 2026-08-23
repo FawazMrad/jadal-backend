@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Frontend spec §1.6 — the attendance feature is removed from the app.
+ * The attendance feature is removed from the app.
  *
  * The three endpoints stay ROUTED for one release and return 410 Gone, so an
  * un-updated client gets an unambiguous "this was removed" rather than a 404

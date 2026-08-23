@@ -11,21 +11,18 @@ use App\Services\Stats\TeamStatsService;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * V2 §3 — top-10 leaderboards. All-time (no date filter — that's what the
- * work order's endpoint signature asks for; per-user/team stats screens
- * already offer date-range filtering separately).
+ * Top-N leaderboards, all-time by default — the per-user and per-team stats
+ * screens already provide date-range filtering separately.
  *
- * `win_rate`/`avg_score`/`best_speaker`/`improvement` for debaters explicitly
- * REUSE DebaterStatsService (per the work order: "reuse whatever your
- * existing debater-stats pipeline already computes") rather than a second,
- * parallel aggregation — one candidate debater at a time. This costs one
- * extra query per candidate versus a single aggregate SQL pass; acceptable
- * for a top-10 ranking on this platform's scale, and it guarantees the
- * leaderboard number always matches what that debater's own stats screen
- * shows (same code path, zero drift risk). Flagged in case it ever needs a
- * cached/materialized ranking at larger scale.
+ * `win_rate`/`avg_score`/`best_speaker`/`improvement` for debaters deliberately
+ * REUSE DebaterStatsService rather than running a second, parallel aggregation
+ * — one candidate debater at a time. That costs an extra query per candidate
+ * compared with a single aggregate SQL pass, which is acceptable at this
+ * platform's scale, and it guarantees a leaderboard value always matches what
+ * that debater's own stats screen shows: same code path, no drift. Worth
+ * revisiting with a materialised ranking if the candidate pool grows large.
  *
- * Frontend spec §6.4 — statistics are public for every user, so the previous
+ * Statistics are public for every user, so the previous
  * stats_visible exclusion is gone and every qualifying debater is ranked.
  * `is_random` (ad-hoc/one-off) teams remain excluded from the team ranking
  * since they are not a persistent entity worth ranking.
@@ -51,7 +48,7 @@ class LeaderboardService
     }
 
     /**
-     * $filter (spec §1.5) narrows the ranking to a date range / positions /
+     * $filter narrows the ranking to a date range / positions /
      * frameworks. It is threaded straight into the SAME per-debater pipeline
      * the own-statistics screen uses, so a filtered leaderboard value always
      * equals that debater's own filtered number — no second implementation to

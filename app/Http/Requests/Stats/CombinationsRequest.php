@@ -5,7 +5,7 @@ namespace App\Http\Requests\Stats;
 use Illuminate\Validation\Rule;
 
 /**
- * MF_FU §4 — line-up analysis filters.
+ * line-up analysis filters.
  *
  * Extends the shared stats filter so `from`/`to`/`frameworks` keep identical
  * semantics and error messages. `positions`, `group_by` and `series` are

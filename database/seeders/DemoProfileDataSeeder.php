@@ -9,7 +9,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 
 /**
- * V2 §6 — dev/staging data-seeding ask (no schema, just data): full profile
+ * dev/staging data-seeding ask (no schema, just data): full profile
  * fields for enough users to verify the redesign without every field reading
  * null, achievement variety across the rank spectrum, and one confirmed
  * team-history swap so GET /users/{id}/teams/history has a non-empty row to

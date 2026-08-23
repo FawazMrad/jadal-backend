@@ -11,8 +11,8 @@ class UserResource extends JsonResource
     /**
      * When true, contact/scoring PII is nulled while every key and type stays
      * exactly as-is, so a client parser needs no change. Used by the guest
-     * live-state projection (§3.3) and by GET /teams/{id} for callers who are
-     * not the coach/leader/a member (§6).
+     * live-state projection and by GET /teams/{id} for callers who are
+     * not the coach/leader/a member.
      *
      * Defaults to false, so all pre-existing call sites are unaffected.
      */
@@ -38,7 +38,7 @@ class UserResource extends JsonResource
             'points'            => $this->stripPii ? null : $this->points,
             // The spec's rule is "names and avatar_url only", so date-of-birth,
             // derived age and location are stripped alongside the three fields
-            // named explicitly in §3.3 — they are personal data by any reading.
+            // named explicitly in — they are personal data by any reading.
             'birth_date'        => $this->stripPii ? null : $this->birth_date?->toDateString(),
             'age'               => $this->stripPii ? null : $this->birth_date?->age,
             'location'          => $this->stripPii ? null : $this->location,

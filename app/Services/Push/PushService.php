@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Sends push notifications through FCM HTTP v1 (frontend spec §7).
+ * Sends push notifications through FCM HTTP v1.
  *
  * Design notes:
  *  - Localization is PER DEVICE, not per user: a user with an Arabic phone and

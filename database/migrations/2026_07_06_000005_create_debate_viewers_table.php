@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// V2 §7 — "watched a debate as a non-participant" signal. Lightweight
+// "watched a debate as a non-participant" signal. Lightweight
 // join-timestamp record, one row per (debate, user) — no sticky/missed
 // tracking needed since there's no penalty for NOT viewing.
 return new class extends Migration

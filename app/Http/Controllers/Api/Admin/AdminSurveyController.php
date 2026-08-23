@@ -50,7 +50,7 @@ class AdminSurveyController extends Controller
 
         $survey->load(['createdBy', 'questions']);
 
-        // Spec §7.2 #6 — only users eligible to see this survey. An
+        // Only users eligible to see this survey. An
         // admin-created survey has no team targeting, so eligibility is the
         // target_roles set.
         app(DebateNotifier::class)->surveyCreated(

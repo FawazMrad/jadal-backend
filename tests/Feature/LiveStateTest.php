@@ -38,7 +38,7 @@ class LiveStateTest extends TestCase
 
     public function test_non_participant_can_access_live_state_as_viewer(): void
     {
-        // V2: live-state is open to any authenticated user. Sensitive bits are
+        // live-state is open to any authenticated user. Sensitive bits are
         // hidden inside the payload, not via a 403.
         $debate = $this->makeDebate();
         $user   = User::factory()->create(['role' => 'debater', 'status' => 'active']);

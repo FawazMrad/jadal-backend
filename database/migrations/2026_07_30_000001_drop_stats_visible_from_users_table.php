@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Frontend spec §6.4 — the share-statistics opt-out is removed: statistics are
+// The share-statistics opt-out is removed: statistics are
 // public for every user, unconditionally. Every permission check that read this
 // column is gone (debater stats, activity stats, coach team summary, and the
 // leaderboard exclusion), so the column itself is now dead weight.

@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Admin stats §performance — covering indexes for the platform-wide aggregate
+// Covering indexes for the platform-wide aggregate
 // queries (all of them filter on "completed debates in a scheduled_at window"
 // and group participants by user/role).
 //

@@ -92,7 +92,7 @@ class DebateController extends Controller
     }
 
     /**
-     * Sprinkles §8: GET /debates/search
+     * GET /debates/search
      *
      * q matches debate title OR motion text. Filters combine with AND across
      * dimensions and OR within one multi-select dimension. No status
@@ -185,7 +185,7 @@ class DebateController extends Controller
     }
 
     /**
-     * Sprinkles §8: GET /debates/tags/distinct — every debate `tag` value
+     * GET /debates/tags/distinct — every debate `tag` value
      * currently in use (debate tags are free text, not managed entities).
      */
     public function distinctTags(): JsonResponse
@@ -389,7 +389,7 @@ class DebateController extends Controller
     }
 
     /**
-     * V12 §1: GET /debates/{debate}/registerable-teams
+     * GET /debates/{debate}/registerable-teams
      *
      * The teams the caller may register for THIS debate — the teams they lead or
      * coach (created_by). A leader usually owns 1; a trainer may own several. Each
@@ -450,7 +450,7 @@ class DebateController extends Controller
     }
 
     /**
-     * V12 §3: GET /debates/{debate}/registrations
+     * GET /debates/{debate}/registrations
      *
      * Who has registered for this debate, split into teams / judges / solo
      * applicants — drives the three "registered" dialogs on the registration

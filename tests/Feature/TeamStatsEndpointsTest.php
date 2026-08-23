@@ -12,7 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * MF_FU §3.2 + §4 — per-team analytics endpoints.
+ * per-team analytics endpoints.
  *
  * The bucketed metrics must stay envelope-compatible with the debater API (the
  * client reuses one parser), and the line-up analysis must group speakers
@@ -81,7 +81,7 @@ class TeamStatsEndpointsTest extends TestCase
         return User::factory()->create(['role' => 'debater', 'status' => 'active']);
     }
 
-    // ── §3.2 ───────────────────────────────────────────────────────────────────
+    // ── ───────────────────────────────────────────────────────────────────
 
     public function test_win_rate_returns_the_bucketed_debater_api_envelope(): void
     {
@@ -154,7 +154,7 @@ class TeamStatsEndpointsTest extends TestCase
             ->assertJsonPath('data.members_counted', 1);
     }
 
-    // ── §4 — combinations ──────────────────────────────────────────────────────
+    // ── — combinations ──────────────────────────────────────────────────────
 
     public function test_combination_key_is_order_insensitive(): void
     {

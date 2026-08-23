@@ -9,7 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * MF_FU §5 — how the room rated a judge's judging.
+ * How the room rated a judge's judging.
  *
  * Source rows are `feedbacks` with type = 'rating_judgement'. Those carry a
  * mandatory `to_user_id` that StoreFeedbackRequest validates to be a judge OF
@@ -199,7 +199,7 @@ class JudgeRatingStatsService
         $fmt     = $f->groupBy === 'year' ? 'Y' : 'Y-m';
         $grouped = $ratings->groupBy(fn (array $r) => $r['date']->format($fmt))->sortKeys();
 
-        // Same zero-fill contract as the activity endpoint (§6.3) — a month with
+        // Same zero-fill contract as the activity endpoint — a month with
         // no ratings is a flat point on the trend, not a gap.
         $start = $f->fromDate()  ?? ($ratings->isEmpty() ? null : $ratings->min(fn ($r) => $r['date'])->copy());
         $end   = $f->toDateEnd() ?? ($ratings->isEmpty() ? null : $ratings->max(fn ($r) => $r['date'])->copy());

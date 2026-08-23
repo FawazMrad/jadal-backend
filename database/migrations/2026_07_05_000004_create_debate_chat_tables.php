@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Sprinkles §2 — persistent team chat with per-message read receipts.
+// Persistent team chat with per-message read receipts.
 // Chat is scoped per (debate, team); never cross-team. Kept indefinitely
 // (no pruning) until a product decision says otherwise.
 return new class extends Migration

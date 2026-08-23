@@ -13,21 +13,19 @@ use App\Services\Stats\TeamStatsService;
 use Illuminate\Http\JsonResponse;
 
 /**
- * V2 §3 — coach team-summary: one snapshot averaged across every team a coach
+ * Coach team-summary: one snapshot averaged across every team a coach
  * currently or has ever trained (teams.created_by), non-random only.
  *
- * Scope note (a deliberate simplification, not the full spec): this returns a
- * single scalar per metric — the average of each team's all-time (or
- * date-range-filtered) figure — rather than the debater API's bucketed
- * chart series. Averaging N teams' own bucketed series into one combined
- * series is a materially different computation; the work order's own wording
- * was "suggested fields", not a strict shape. Flagged in the response doc —
- * happy to build the full bucketed version if that's actually needed.
+ * Scope note — a deliberate simplification: this returns a single scalar per
+ * metric (the average of each team's all-time, or date-range-filtered, figure)
+ * rather than the debater API's bucketed chart series. Collapsing N teams' own
+ * bucketed series into one combined series is a materially different
+ * computation, and no consumer needs it yet. Revisit if a chart is ever
+ * required here.
  *
- * `team_avg_active` is different in kind from the other three: it's the
- * average of the §7 activity SCORE across the coach's CURRENT teams'
- * CURRENT members (not a team-level computation), per the work order's own
- * phrasing ("averaged across the coach's team members").
+ * `team_avg_active` is different in kind from the other three: it averages the
+ * activity SCORE across the CURRENT members of the coach's CURRENT teams, so
+ * it is a per-member figure rather than a team-level one.
  */
 class CoachTeamSummaryController extends Controller
 {
@@ -37,7 +35,7 @@ class CoachTeamSummaryController extends Controller
     ) {}
 
     /**
-     * Frontend spec §6.4 — statistics are public for every user, so the
+     * Statistics are public for every user, so the
      * previous self/admin/stats_visible gate is gone. Any authenticated user
      * may read any coach's team summary.
      */
@@ -47,7 +45,7 @@ class CoachTeamSummaryController extends Controller
 
         $teams = Team::where('created_by', $trainer->id)->where('is_random', false)->get();
 
-        // MF_FU §3.1a — optional narrowing to one team. Omitted keeps the
+        // Optional narrowing to one team. Omitted keeps the
         // all-teams average byte-for-byte as before. A team this coach does not
         // train is a 403 rather than a 404 by explicit request: the id may well
         // exist, and saying "not found" for someone else's team is a lie that

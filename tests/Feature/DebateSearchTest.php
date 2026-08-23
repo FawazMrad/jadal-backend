@@ -12,7 +12,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** Sprinkles §8 — debate search + filter option endpoints. */
+/** Debate search + filter option endpoints. */
 class DebateSearchTest extends TestCase
 {
     use RefreshDatabase;

@@ -7,7 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 — admin-editable support contact. */
+/** admin-editable support contact. */
 class AdminContactInfoTest extends TestCase
 {
     use RefreshDatabase;

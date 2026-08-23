@@ -62,7 +62,7 @@ class LiveKitWebhookController extends Controller
             : null;
 
         if (! $participant) {
-            // V2 §7 — a non-participant joining the MAIN room is a viewer. No
+            // A non-participant joining the MAIN room is a viewer. No
             // sticky-stamp treatment needed (no "missed viewing" penalty to be
             // fair about) — just a lightweight join record, once per debate.
             if ($debate && $roomName === $debate->livekit_room_name) {
@@ -88,7 +88,7 @@ class LiveKitWebhookController extends Controller
         );
 
         // is_attended is LIVE presence (cleared again on leave). The *_at stamps
-        // are the sticky historical record driving the §6.5 attendance stats —
+        // are the sticky historical record driving the attendance stats —
         // set once on first join, never cleared.
         $updates = ['is_attended' => true];
         if ($isMainOrResult && $participant->first_attended_at === null) {
@@ -151,7 +151,7 @@ class LiveKitWebhookController extends Controller
             $this->electChair($debate, excludeUserId: $userId);
         }
 
-        // V11 §0 — when the last judge leaves the MAIN room during an active
+        // When the last judge leaves the MAIN room during an active
         // speech, auto-pause the timer. The server owns this because once no judge
         // is present there is no client authority left to trigger it.
         if ($roomName === $debate->livekit_room_name) {
@@ -407,7 +407,7 @@ class LiveKitWebhookController extends Controller
     }
 
     /**
-     * Guest mode §Q5 — a guest's LiveKit identity is `guest-<uuid>`, which is
+     * A guest's LiveKit identity is `guest-<uuid>`, which is
      * not a user id and must never be treated as one.
      *
      * Both join/leave handlers cast the identity with `(int) $identity`, which

@@ -29,7 +29,7 @@ class StatsFilterRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($v) {
-            // Spec §1.4/§9 — position and framework are mutually exclusive
+            // Position and framework are mutually exclusive
             // dimensions. Combined they produce a slice too granular to mean
             // anything (e.g. "3rd opposition on economic motions" over two
             // debates). The UI clears one when the other is picked; this is the

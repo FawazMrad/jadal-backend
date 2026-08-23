@@ -79,7 +79,7 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
 
 // ── Guest-reachable debate endpoints (OPTIONAL auth) ──────────────────────────
 //
-// Guest mode §2 (Option A — public read by debate id). These are the ONLY two
+// Guest mode (Option A — public read by debate id). These are the ONLY two
 // routes in the API that accept a request with no bearer token. They are
 // deliberately registered OUTSIDE the `auth:sanctum` group above, because that
 // guard 401s a tokenless request before the controller can decide anything.
@@ -141,7 +141,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
     // ── Search ────────────────────────────────────────────────────────────────
     Route::get('/search', [SearchController::class, 'index'])->name('search');
 
-    // ── V2 §3 — leaderboards (public top-10 rankings) ─────────────────────────
+    // ── V2 — leaderboards (public top-10 rankings) ─────────────────────────
     Route::get('/leaderboards/debaters', [LeaderboardController::class, 'debaters'])->name('leaderboards.debaters');
     Route::get('/leaderboards/teams',    [LeaderboardController::class, 'teams'])   ->name('leaderboards.teams');
 
@@ -179,7 +179,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         // They are the two guest-reachable endpoints and live in the
         // `auth.optional` group further down — see "Guest-reachable" below.
 
-        // Sprinkles §2 — persistent team chat (team resolved server-side from
+        // Persistent team chat (team resolved server-side from
         // the caller's own participant row; additive to the peer team_chat event).
         Route::get('/{debate}/chat',        [DebateChatController::class, 'index'])   ->name('chat.index');
         Route::post('/{debate}/chat',       [DebateChatController::class, 'store'])   ->name('chat.store');
@@ -198,7 +198,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::post('/{debate}/close-room',             [LiveDebateController::class, 'closeRoom'])      ->name('close-room');
     });
 
-    // ── Sprinkles §6.1–§6.4: public user profiles ─────────────────────────────
+    // ── Public user profiles ─────────────────────────────
     Route::prefix('users/{user}')->name('users.')->group(function (): void {
         Route::get('/',               [UserProfileController::class, 'show'])        ->name('show');
         Route::get('/achievements',   [UserProfileController::class, 'achievements'])->name('achievements');
@@ -206,7 +206,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/teams/history',  [UserProfileController::class, 'teamsHistory'])->name('teams.history');
     });
 
-    // ── Sprinkles §8: option lists for the debate-search filter dialog ────────
+    // ── Option lists for the debate-search filter dialog ────────
     Route::get('/judges',        [UserProfileController::class, 'judges']) ->name('judges.index');
     Route::get('/teams/options', [TeamController::class, 'options'])       ->name('teams.options');
 
@@ -217,27 +217,27 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/best-speaker',  [DebaterStatsController::class, 'bestSpeaker']) ->name('best-speaker');
         Route::get('/score-ranking', [DebaterStatsController::class, 'scoreRanking'])->name('score-ranking');
         Route::get('/improvement',   [DebaterStatsController::class, 'improvement']) ->name('improvement');
-        // DEPRECATED (frontend spec §1.6) — the attendance feature is removed
+        // DEPRECATED — the attendance feature is removed
         // from the app. Kept routed and returning 410 Gone for one release so an
         // un-updated client gets an unambiguous "this is gone" instead of a 404
         // that looks like a routing bug. Delete the route + controller once the
         // new app version is fully rolled out.
         Route::get('/prep-attendance', GoneController::class)->name('prep-attendance');
-        // V2 §7 — activity/participation score (additional "kind" on the same screen).
+        // activity/participation score (additional "kind" on the same screen).
         Route::get('/activity', [ActivityStatsController::class, 'debater'])->name('activity');
     });
 
-    // ── V2 §7: coach + judge activity stats (attendance is deprecated below) ──
+    // ── V2: coach + judge activity stats (attendance is deprecated below) ──
     Route::get('/trainers/{trainer}/stats/activity',   [ActivityStatsController::class, 'trainer'])  ->name('trainers.stats.activity');
     Route::get('/judges/{judge}/stats/activity',       [ActivityStatsController::class, 'judge'])    ->name('judges.stats.activity');
 
-    // MF_FU §5 — average rating a judge received from post-debate feedback.
+    // Average rating a judge received from post-debate feedback.
     Route::get('/judges/{judge}/stats/ratings', [JudgeRatingStatsController::class, 'show'])->name('judges.stats.ratings');
 
-    // MF_FU §3.1b — the coach's team picker (subject-scoped, unlike GET /teams).
+    // The coach's team picker (subject-scoped, unlike GET /teams).
     Route::get('/trainers/{trainer}/teams', [UserProfileController::class, 'trainerTeams'])->name('trainers.teams');
 
-    // ── MF_FU §3.2 + §4 — per-team analytics (coach of the team, or admin) ────
+    // ── Per-team analytics (coach of the team, or admin) ────
     Route::prefix('teams/{team}/stats')->name('teams.stats.')->group(function (): void {
         Route::get('/win-rate',     [TeamStatsController::class, 'winRate'])     ->name('win-rate');
         Route::get('/avg-score',    [TeamStatsController::class, 'avgScore'])    ->name('avg-score');
@@ -246,11 +246,11 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::get('/combinations', [TeamStatsController::class, 'combinations'])->name('combinations');
     });
 
-    // DEPRECATED (frontend spec §1.6) — see the note above.
+    // DEPRECATED — see the note above.
     Route::get('/trainers/{trainer}/stats/attendance', GoneController::class)->name('trainers.stats.attendance');
     Route::get('/judges/{judge}/stats/attendance',     GoneController::class)->name('judges.stats.attendance');
 
-    // V2 §3 — coach team-summary (avg improvement/win-rate/score/activity across the coach's teams).
+    // Coach team-summary (avg improvement/win-rate/score/activity across the coach's teams).
     Route::get('/trainers/{trainer}/stats/team-summary', [CoachTeamSummaryController::class, 'show'])->name('trainers.stats.team-summary');
 
     // ── Feedback (any auth user) ──────────────────────────────────────────────
@@ -273,7 +273,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
         Route::delete('/{notification}',         [NotificationController::class, 'destroy'])     ->name('destroy');
     });
 
-    // ── Push notification device registry (spec §7.2.1) ───────────────────────
+    // ── Push notification device registry ───────────────────────
     // Both idempotent: called on login, on FCM token rotation, and on app
     // language change.
     Route::post('/devices',   [DeviceController::class, 'store'])  ->name('devices.store');
@@ -456,7 +456,7 @@ Route::middleware(['auth:sanctum', 'check.status'])->group(function (): void {
             Route::patch('/{complaint}',   [ComplaintController::class, 'update']) ->name('update');
         });
 
-        // V2 — admin-editable support contact (email/phone/instagram, served on login)
+        // admin-editable support contact (email/phone/instagram, served on login)
         Route::prefix('contact-info')->name('contact-info.')->group(function (): void {
             Route::get('/',  [AdminContactInfoController::class, 'show'])  ->name('show');
             Route::put('/',  [AdminContactInfoController::class, 'update'])->name('update');

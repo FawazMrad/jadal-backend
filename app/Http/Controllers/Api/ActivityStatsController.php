@@ -10,7 +10,7 @@ use App\Services\Stats\StatsFilter;
 use Illuminate\Http\JsonResponse;
 
 /**
- * V2 §7 — activity/participation scoring. One shared computation regardless
+ * activity/participation scoring. One shared computation regardless
  * of role (registration+attendance+viewing+penalty all apply to any user),
  * exposed under all three existing per-role stat prefixes so it rides
  * alongside win-rate/avg-score/etc. (debater) and attendance (trainer/judge)
@@ -37,7 +37,7 @@ class ActivityStatsController extends Controller
     }
 
     /**
-     * Frontend spec §6.4 — statistics are public for every user, so there is no
+     * Statistics are public for every user, so there is no
      * visibility gate here any more. Any authenticated user may read any user's
      * activity score; the route's auth middleware is the only check.
      */

@@ -83,12 +83,12 @@ class DebaterStatsController extends Controller
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Spec §1.9 — these five metrics are all derived from debating performance,
+     * These five metrics are all derived from debating performance,
      * so they are meaningless for a judge or trainer subject. Previously such a
      * request returned 200 with empty aggregates, which reads as "this judge has
      * a 0% win rate" rather than "this question does not apply". Reject instead.
      *
-     * Note this guards the SUBJECT, not the viewer: since spec §6.4 made
+     * Note this guards the SUBJECT, not the viewer: since spec made
      * statistics public, any authenticated user may read any debater's stats,
      * and the old stats_visible / self / supervising-coach gate is gone.
      */

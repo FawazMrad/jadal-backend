@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Guest mode §2 — OPTIONAL authentication for the two guest-reachable
+ * OPTIONAL authentication for the two guest-reachable
  * endpoints (live-state, token). Everything else keeps hard `auth:sanctum`.
  *
  * Three cases, deliberately distinguished:

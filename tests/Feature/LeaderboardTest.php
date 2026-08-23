@@ -7,7 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §3 — top-10 leaderboards. */
+/** top-10 leaderboards. */
 class LeaderboardTest extends TestCase
 {
     use RefreshDatabase;
@@ -28,7 +28,7 @@ class LeaderboardTest extends TestCase
     }
 
     /**
-     * Frontend spec §6.4 — the stats_visible exclusion is removed, so every
+     * The stats_visible exclusion is removed, so every
      * debater is ranked. (This test previously asserted an opted-out debater
      * was filtered OUT of the leaderboard.)
      */
@@ -43,7 +43,7 @@ class LeaderboardTest extends TestCase
         $this->assertContains($top->id, $ids);
     }
 
-    /** Spec §1.5 — filters are accepted on the debater leaderboard. */
+    /** Filters are accepted on the debater leaderboard. */
     public function test_debater_leaderboard_accepts_date_and_framework_filters(): void
     {
         $viewer = User::factory()->create(['role' => 'debater', 'status' => 'active']);
@@ -57,7 +57,7 @@ class LeaderboardTest extends TestCase
             ->assertStatus(200);
     }
 
-    /** positions and frameworks may never be combined (spec §1.4/§9). */
+    /** positions and frameworks may never be combined. */
     public function test_leaderboard_rejects_positions_and_frameworks_together(): void
     {
         $viewer = User::factory()->create(['role' => 'debater', 'status' => 'active']);

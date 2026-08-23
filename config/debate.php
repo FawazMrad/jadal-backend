@@ -20,7 +20,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Post-debate rating scale (MF_FU §5)
+    | Post-debate rating scale
     |--------------------------------------------------------------------------
     |
     | The 1..5 stars submitted via POST /feedback with type=rating_judgement or
@@ -69,11 +69,11 @@ return [
         // Switch improvement granularity from monthly to yearly past this span.
         'improvement_month_to_year_span' => 24,
 
-        // Ceiling on zero-filled activity buckets (MF_FU §6.3), so an absurd
+        // Ceiling on zero-filled activity buckets, so an absurd
         // from/to range can't generate an unbounded payload.
         'max_zero_filled_buckets'      => 240,
 
-        // §4 — team combination analysis.
+        // team combination analysis.
         'combination_default_min_debates' => 2,
         'combination_default_limit'       => 10,
         'combination_max_limit'           => 50,
@@ -81,7 +81,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Points system (V2 §3)
+    | Points system
     |--------------------------------------------------------------------------
     |
     | Elo-style: delta = base + K*(actual - expected) + score_component.
@@ -105,7 +105,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Activity/participation scoring (V2 §7)
+    | Activity/participation scoring
     |--------------------------------------------------------------------------
     |
     | Flat per-event weights, NOT Elo-adjusted (registering/attending/viewing

@@ -17,7 +17,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * Guest mode — tokenless spectator access to a live debate via share link.
+ * Tokenless spectator access to a live debate via share link.
  *
  * The load-bearing invariant across this file: a guest is defined ONLY by the
  * absence of a bearer token, and no guest rule may ever alter what an
@@ -205,7 +205,7 @@ class GuestModeTest extends TestCase
         return $users;
     }
 
-    // ── live-state: PII stripping (§3.3 / Q8) ─────────────────────────────────
+    // ── live-state: PII stripping ─────────────────────────────────
 
     public function test_guest_live_state_strips_pii_from_every_user_object(): void
     {
@@ -251,7 +251,7 @@ class GuestModeTest extends TestCase
         $this->assertNotNull($speakers[0]['user']['phone']);
     }
 
-    // ── live-state: share_url (§1.1 / PART A) ─────────────────────────────────
+    // ── live-state: share_url ─────────────────────────────────
 
     public function test_share_url_present_for_authenticated_and_absent_for_guest(): void
     {
@@ -292,7 +292,7 @@ class GuestModeTest extends TestCase
             ->assertJsonPath('data.debate.share_url', "https://fallback.test/d/{$debate->id}");
     }
 
-    // ── live-state: result visibility (§Q6) ───────────────────────────────────
+    // ── live-state: result visibility ───────────────────────────────────
 
     public function test_guest_result_is_null_before_reveal_and_present_after(): void
     {
@@ -321,7 +321,7 @@ class GuestModeTest extends TestCase
         $this->assertNull($data['result']['judge']['phone'] ?? null);
     }
 
-    // ── live-state: rooms + guest role (§3.1 / PART E) ────────────────────────
+    // ── live-state: rooms + guest role ────────────────────────
 
     public function test_guest_rooms_expose_only_main_as_joinable(): void
     {
@@ -378,7 +378,7 @@ class GuestModeTest extends TestCase
         }
     }
 
-    // ── token: guest main-room grants (§4 / Q5 / Q7) ──────────────────────────
+    // ── token: guest main-room grants ──────────────────────────
 
     public function test_guest_main_token_is_subscribe_only_hidden_and_uuid_identified(): void
     {
@@ -474,7 +474,7 @@ class GuestModeTest extends TestCase
             ->assertStatus(self::GUEST_GONE_STATUS);
     }
 
-    // ── Expiry window (§Q4) ───────────────────────────────────────────────────
+    // ── Expiry window ───────────────────────────────────────────────────
 
     public function test_guest_access_open_while_live(): void
     {
@@ -618,7 +618,7 @@ class GuestModeTest extends TestCase
         }
     }
 
-    // ── §1.3 — the /d/{id} browser fallback ───────────────────────────────────
+    // ── — the /d/{id} browser fallback ───────────────────────────────────
 
     public function test_share_link_route_resolves_in_a_browser(): void
     {

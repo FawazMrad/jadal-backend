@@ -16,7 +16,7 @@ use Tests\TestCase;
  * role middleware before the controller even ran. It was then widened to the
  * trainer who created it, the leader, or a current member.
  *
- * Guest mode §6 widened it again: ANY authenticated user may now read a team,
+ * Guest mode widened it again: ANY authenticated user may now read a team,
  * because opening a team from search otherwise showed a bare name and no
  * roster. What a non-member receives is narrowed instead of refused — the same
  * shape, with contact details nulled (see GuestModeTest). Every WRITE endpoint
@@ -94,7 +94,7 @@ class TeamShowTest extends TestCase
     }
 
     /**
-     * §6 — a past member now READS the team (they used to get a 403), but
+     * a past member now READS the team (they used to get a 403), but
      * without contact details.
      */
     public function test_past_member_can_view_without_contact_details(): void
@@ -116,7 +116,7 @@ class TeamShowTest extends TestCase
     }
 
     /**
-     * §6 — the whole point of the change: an unrelated authenticated user gets
+     * the whole point of the change: an unrelated authenticated user gets
      * the roster instead of a 403. Contact details stay withheld.
      */
     public function test_unrelated_users_can_view_roster_without_contact_details(): void

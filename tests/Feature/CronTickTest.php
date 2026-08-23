@@ -42,7 +42,7 @@ class CronTickTest extends TestCase
     public function test_motion_revealed_when_reveal_time_passed(): void
     {
         $format = $this->makeFormat();
-        // V2: status flip to 'announced' is admin-driven, so this debate is already
+        // Status flip to 'announced' is admin-driven, so this debate is already
         // 'announced'. The cron only reveals the motion (status untouched).
         // scheduled in 30min, reveal offset = 1h → reveal time = 30min ago → triggers.
         $debate = Debate::factory()->create([

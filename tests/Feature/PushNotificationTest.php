@@ -10,12 +10,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-/** Frontend spec §7 — device registry, payload contract and localized copy. */
+/** Device registry, payload contract and localized copy. */
 class PushNotificationTest extends TestCase
 {
     use RefreshDatabase;
 
-    // ── §7.2.1 device registration ─────────────────────────────────────────────
+    // ── device registration ─────────────────────────────────────────────
 
     public function test_register_device_stores_token_platform_and_locale(): void
     {
@@ -97,7 +97,7 @@ class PushNotificationTest extends TestCase
         ])->assertStatus(422);
     }
 
-    // ── §7.2.2/§7.2.3 payload + localization contract ──────────────────────────
+    // ──/ payload + localization contract ──────────────────────────
 
     public function test_all_eight_types_exist_with_both_locales_and_a_deep_link(): void
     {

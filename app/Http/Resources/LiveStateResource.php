@@ -11,10 +11,10 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class LiveStateResource extends JsonResource
 {
     /**
-     * @param  bool  $isGuest  Tokenless share-link caller (guest mode §3). Keeps
+     * @param bool $isGuest Tokenless share-link caller. Keeps
      *   every key and type identical to the authenticated payload — the client
-     *   reuses one parser — while stripping PII (§3.3), omitting share_url
-     *   (§3.2, a guest may not re-share) and locking every room but `main`.
+     * reuses one parser — while stripping PII, omitting share_url
+     * and locking every room but `main`.
      *   Defaults to false, so all pre-existing call sites are unaffected.
      */
     public function __construct(
@@ -36,7 +36,7 @@ class LiveStateResource extends JsonResource
         return [
             'debate' => $this->buildDebateBlock($debate),
 
-            // Sprinkles §7 — superset of the debate-list/detail format object, so
+            // Superset of the debate-list/detail format object, so
             // one client-side parser covers both. Offsets are FLOAT HOURS
             // (0.5 = 30 minutes): minutes = value * 60, seconds = value * 3600.
             'format' => $format ? [
@@ -101,9 +101,9 @@ class LiveStateResource extends JsonResource
                 // STILL `live`, this is the canonical "speeches done / result room
                 // open" signal — drive the result-room UI off this, NOT off status.
                 'speeches_completed_at' => $debate->speeches_completed_at?->toIso8601String(),
-                // V11 §1 — intro phase marker (live, chair welcome, pre-speech).
+                // Intro phase marker (live, chair welcome, pre-speech).
                 'live_started_at'       => $debate->live_started_at?->toIso8601String(),
-                // V11 §0 — server-authoritative timer. Clients compute:
+                // server-authoritative timer. Clients compute:
                 //   elapsed = timer_is_paused
                 //           ? timer_paused_elapsed_seconds
                 //           : (clientNow + (server_now - clientNow)) - current_stage_started_at
@@ -113,13 +113,13 @@ class LiveStateResource extends JsonResource
                 'timer_paused_elapsed_seconds' => (int) $debate->timer_paused_elapsed_seconds,
         ];
 
-        // Guest mode §1.1 — the canonical, stable, copy-to-clipboard link for
+        // The canonical, stable, copy-to-clipboard link for
         // this debate, built entirely server-side so the client never
         // concatenates anything.
         //
         // Added ONLY for an authenticated caller: for a guest the key is absent
         // entirely rather than null, because a guest must not be able to
-        // re-share. There is no `share_token` counterpart — §Q1 chose the
+        // re-share. There is no `share_token` counterpart — chose the
         // public-read model, so the URL carries no credential.
         if (! $this->isGuest) {
             $block['share_url'] = $this->shareUrl($debate);
@@ -129,11 +129,11 @@ class LiveStateResource extends JsonResource
     }
 
     /**
-     * Guest mode §1.1 / §Q2 — the canonical share link: {base}/d/{id}.
+     * The canonical share link: {base}/d/{id}.
      *
      * Stable per debate (a pure function of the id — nothing rotates, nothing
      * expires) and config-driven, so the public web domain can change without
-     * a code change. There is deliberately NO share token: §Q1 selected the
+     * a code change. There is deliberately NO share token: selected the
      * public-read model, so the URL carries no credential.
      */
     private function shareUrl(Debate $debate): string
@@ -198,7 +198,7 @@ class LiveStateResource extends JsonResource
         // `live`). It is judges-only and stays open until close-room tears it down.
         $resultOpen = $debate->isInResultPhase();
 
-        // Guest mode §3.1 — a guest may join ONLY the main room, and only while
+        // A guest may join ONLY the main room, and only while
         // it is open. Every other room is hard-locked regardless of the debate's
         // state, so no prep/result room ever becomes reachable without a token.
         if ($this->isGuest) {
@@ -498,7 +498,7 @@ class LiveStateResource extends JsonResource
         }
 
         // A guest is never a judge, so they fall through the same gate as any
-        // non-judge: null before reveal, the public summary after (§Q6).
+        // non-judge: null before reveal, the public summary after.
         $isJudge        = ! $this->isGuest
             && $this->myParticipant
             && $this->myParticipant->role === 'judge';

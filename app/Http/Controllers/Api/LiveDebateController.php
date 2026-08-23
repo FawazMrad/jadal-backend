@@ -35,7 +35,7 @@ class LiveDebateController extends Controller
     {
         $user = $request->user();
 
-        // Guest mode §2 — this route is optionally authenticated, so a null user
+        // This route is optionally authenticated, so a null user
         // is a legitimate tokenless share-link caller rather than an error. Only
         // guests are subject to the access window; an authenticated caller of
         // ANY role reaches the unchanged path below at every point in the
@@ -69,7 +69,7 @@ class LiveDebateController extends Controller
     }
 
     /**
-     * Guest mode §Q4 — the single denial for a tokenless caller whose debate is
+     * The single denial for a tokenless caller whose debate is
      * outside the guest window (never live, or >10 min past terminal).
      *
      * 410 Gone rather than 403/404: the resource genuinely existed and was
@@ -410,7 +410,7 @@ class LiveDebateController extends Controller
         );
     }
 
-    // ── V11 §1: POST /debates/{debate}/start-live ─────────────────────────────
+    // ── V11: POST /debates/{debate}/start-live ─────────────────────────────
 
     /**
      * Chair takes the room live from the open lobby — the INTRO phase: still
@@ -456,7 +456,7 @@ class LiveDebateController extends Controller
         );
     }
 
-    // ── V11 §0: POST /debates/{debate}/timer ──────────────────────────────────
+    // ── V11: POST /debates/{debate}/timer ──────────────────────────────────
 
     /**
      * Server-authoritative timer control (chair only). `pause` freezes the
@@ -859,7 +859,7 @@ class LiveDebateController extends Controller
                 if ($debate->result_revealed_at === null) {
                     $updates['result_revealed_at'] = now();
                 }
-                // Terminal transition — anchors the guest read window (§Q4).
+                // Terminal transition — anchors the guest read window.
                 // Distinct from ended_at, which marks the end of the SPEECHES.
                 if ($debate->finalized_at === null) {
                     $updates['finalized_at'] = now();
@@ -952,13 +952,13 @@ class LiveDebateController extends Controller
                 if ($debate->result_revealed_at === null) {
                     $updates['result_revealed_at'] = now();
                 }
-                // Terminal transition — anchors the guest read window (§Q4).
+                // Terminal transition — anchors the guest read window.
                 if ($debate->finalized_at === null) {
                     $updates['finalized_at'] = now();
                 }
                 $debate->update($updates);
 
-                // V2 §3 — points system. Same eligibility bar the stats pipeline
+                // Points system. Same eligibility bar the stats pipeline
                 // already uses (status=completed + a result exists), so this is
                 // the single, unambiguous trigger point. Idempotent internally.
                 app(PointsService::class)->awardForDebate($debate->fresh(['result']));
@@ -973,7 +973,7 @@ class LiveDebateController extends Controller
                 $debate->update([
                     'status'              => 'cancelled',
                     'cancellation_reason' => 'manual',
-                    // Terminal transition — anchors the guest read window (§Q4).
+                    // Terminal transition — anchors the guest read window.
                     'finalized_at'        => $debate->finalized_at ?? now(),
                 ]);
             }

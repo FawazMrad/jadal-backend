@@ -55,7 +55,7 @@ class AdminDebateController extends Controller
 
         $debate->load(['format', 'motion', 'createdBy']);
 
-        // No push on debate creation. Spec §7.2 #5 (debate_created) was retired
+        // No push on debate creation. Spec (debate_created) was retired
         // — notifying every user on every creation was the most likely reason
         // for someone to turn push off entirely. See DebateNotifier::debateCreated().
 
@@ -71,7 +71,7 @@ class AdminDebateController extends Controller
     }
 
     /**
-     * Re-arms the §7.2 #3 prep reminder when the debate's timing moves.
+     * Re-arms the prep reminder when the debate's timing moves.
      *
      * The reminder fires one hour before prep rooms open, and that moment is
      * derived as `scheduled_at` minus the FORMAT's prep_rooms_open_offset_hours
@@ -194,7 +194,7 @@ class AdminDebateController extends Controller
     }
 
     /**
-     * V12 §2: POST /admin/debates/{debate}/announce
+     * POST /admin/debates/{debate}/announce
      *
      * The admin selects the line-up: ≥1 judge and the TWO teams that will debate —
      * each team being either an existing team (`team_id`) or a "random" team (a
@@ -304,7 +304,7 @@ class AdminDebateController extends Controller
 
         $debate->load('participants.user');
 
-        // Spec §7.2 #1/#2 with the agreed de-duplication rule: the users kept
+        // Spec with the agreed de-duplication rule: the users kept
         // in the lineup get #2 (debate_accepted) ONLY, and #1
         // (debate_state_changed) goes to the remaining participants, so nobody
         // receives both for the same transition.

@@ -18,7 +18,7 @@ class ContactInfo extends Model
     }
 
     /**
-     * MF_FU §2 — the shape both login and GET /admin/contact-info return.
+     * The shape both login and GET /admin/contact-info return.
      *
      * The three original keys are passed through verbatim: the drawer prints
      * them as-is today and a mid-rollout client must keep seeing what it saw.

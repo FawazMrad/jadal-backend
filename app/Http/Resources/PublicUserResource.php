@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 class PublicUserResource extends JsonResource
 {
     /**
-     * Guest projection (§3.3): nulls `points` while keeping every key and type.
+     * Guest projection: nulls `points` while keeping every key and type.
      * This resource never carried email/phone, so `points` is its only PII.
      *
      * Defaults to false, so all pre-existing call sites are unaffected.

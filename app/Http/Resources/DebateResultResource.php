@@ -9,7 +9,7 @@ class DebateResultResource extends JsonResource
 {
     /**
      * Forwarded to the nested judge UserResource. A revealed result is public
-     * (§Q6 — guests see it), but the submitting judge's contact details are not.
+     *, but the submitting judge's contact details are not.
      *
      * Defaults to false, so all pre-existing call sites are unaffected.
      */

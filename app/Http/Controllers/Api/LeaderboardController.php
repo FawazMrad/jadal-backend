@@ -11,12 +11,12 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * V2 §3 — top-N leaderboards for debaters and teams.
+ * top-N leaderboards for debaters and teams.
  *
- * Frontend spec §1.5 added the own-statistics filter set (date range, and
- * positions OR frameworks). Filters are threaded into the same per-subject
- * stats pipeline the own-statistics screens use, so a filtered leaderboard
- * value always equals that subject's own filtered number.
+ * Supports the same filter set as the per-user statistics screens (date range,
+ * and positions OR frameworks). Filters are threaded into that same
+ * per-subject pipeline, so a filtered leaderboard value always equals the
+ * subject's own filtered number.
  *
  * No `group_by`: a grouped top-N is not a single ranked list. The date range
  * covers the "this month / this year" use case.
@@ -95,7 +95,7 @@ class LeaderboardController extends Controller
 
     /**
      * Cross-field filter rules shared by both leaderboards:
-     *  - positions and frameworks are mutually exclusive (spec §1.4/§9);
+     * - positions and frameworks are mutually exclusive;
      *  - every position code / framework id must be well-formed;
      *  - `metric=points` cannot honour ANY filter — users.points is a running
      *    Elo rating, not a per-debate quantity, so there is no "points as of

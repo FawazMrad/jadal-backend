@@ -15,13 +15,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * MF_FU §3.2 + §4 — per-team analytics for the coach's team picker.
+ * per-team analytics for the coach's team picker.
  *
  * The four metric endpoints return the SAME envelopes as the debater API
  * (win-rate/avg-score → bucketed series, improvement → ImprovementStat,
  * activity → ActivityStat) so the client reuses its existing parsers.
  *
- * Unlike the debater stats — which §6.4 made public — these are gated to the
+ * Unlike the debater stats — which made public — these are gated to the
  * coach of the team and admins. A line-up analysis is competitive information:
  * it tells anyone who reads it which three people to prepare against.
  */
@@ -110,7 +110,7 @@ class TeamStatsController extends Controller
         return $this->success($combined, 'Team activity retrieved.');
     }
 
-    // ── §4 — line-up (combination) analysis ────────────────────────────────────
+    // ── — line-up (combination) analysis ────────────────────────────────────
 
     public function combinations(CombinationsRequest $request, Team $team): JsonResponse
     {

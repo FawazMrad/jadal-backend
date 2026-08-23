@@ -9,23 +9,24 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * V2 §7 — combined activity/participation score from four signal types:
+ * Combined activity/participation score from four signal types:
  *   registration → registering interest (debater solo, judge, or coach whose
  *                  team registered as a whole) — full credit even if never
  *                  selected, this is a positive-interest signal on its own.
  *   attendance   → actually showing up once selected/rostered (reuses the
- *                  V1 §6.5 sticky stamps: prep_attended_at for debaters,
+ * V1 sticky stamps: prep_attended_at for debaters,
  *                  first_attended_at for trainer/judge).
- *   viewing      → watched a debate as a non-participant (new §7 signal,
+ * viewing → watched a debate as a non-participant (new signal,
  *                  DebateViewer, recorded by the LiveKit webhook).
  *   penalty      → selected/rostered but did NOT attend (mirror of
  *                  attendance — same rows, penalized instead of rewarded).
  *
- * `value` is a raw weighted point total, NOT a percentage — the work order's
- * illustrative "6%" framing needs a defined ceiling that was never specified;
- * a real percentage can be added once product picks a max to normalize
- * against. Weights are flat, not Elo-adjusted (see config('debate.activity')
- * — this isn't a contest, so there's no "opponent" to weigh against).
+ * `value` is a raw weighted point total, NOT a percentage. Expressing it as a
+ * percentage would need a defined ceiling to normalise against, and no such
+ * maximum is defined — so the raw total is published and the client decides
+ * how to present it. Weights are flat rather than Elo-adjusted (see
+ * config('debate.activity')): this is participation, not a contest, so there
+ * is no opponent to weigh against.
  */
 class ActivityStatsService
 {
@@ -55,7 +56,7 @@ class ActivityStatsService
         }
 
         // ── Attendance / penalty: only selected (approved) rows on debates that
-        // actually happened (completed). For debaters, mirrors the V1 §6.5
+        // actually happened (completed). For debaters, mirrors the V1
         // fairness rule — a debate whose prep rooms never opened can't be missed.
         $selected = DebateParticipant::where('user_id', $user->id)
             ->whereIn('role', self::ROLES)
@@ -138,7 +139,7 @@ class ActivityStatsService
     /**
      * @return array<string, Collection> chronologically ordered, gap-free
      *
-     * MF_FU §6.3 — quiet periods are emitted as zero-valued buckets rather than
+     * Quiet periods are emitted as zero-valued buckets rather than
      * omitted. A trend line drawn from sparse buckets silently closes the gap
      * over an inactive month and overstates the slope; the client should see the
      * flat stretch. The filled span runs from `from` (or the first event) to

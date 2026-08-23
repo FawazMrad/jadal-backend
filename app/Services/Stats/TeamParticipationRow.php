@@ -10,7 +10,7 @@ use Carbon\CarbonInterface;
  * `avgScore` is main-stage-only (orders 1-6) because the leaderboard and the
  * coach team-summary have always computed it that way and their published
  * numbers must not move. The richer `speeches` list carries every scored stage
- * INCLUDING replies, and is what the bucketed §3.2 metrics and the §4
+ * INCLUDING replies, and is what the bucketed metrics and the
  * combination analysis aggregate over — those mirror the debater API's
  * semantics instead. The two therefore differ by the reply stages; that is
  * deliberate and documented in the API reply, not an oversight.
@@ -65,7 +65,7 @@ class TeamParticipationRow
      * The line-up: distinct user ids who actually spoke, ascending.
      *
      * Sorted so the set is order-insensitive — {A@P1, B@P2} and {B@P1, A@P2}
-     * produce the same combination key, which is what §4.3 Q3 asks for.
+     * produce the same combination key, which is what Q3 asks for.
      *
      * @return int[]
      */

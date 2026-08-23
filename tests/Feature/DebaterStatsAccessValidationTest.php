@@ -26,7 +26,7 @@ class DebaterStatsAccessValidationTest extends TestCase
         $this->actingAs($d)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
-    /** V2 §9 — stats are public by default: any authenticated stranger can view them. */
+    /** Stats are public by default: any authenticated stranger can view them. */
     public function test_stranger_can_view_stats_by_default(): void
     {
         $d = $this->debater();
@@ -41,7 +41,7 @@ class DebaterStatsAccessValidationTest extends TestCase
         $this->actingAs($coach)->getJson("/api/debaters/{$d->id}/stats/win-rate")->assertStatus(200);
     }
 
-    /** V2 §9 — an unrelated coach is just "any other user": public by default too. */
+    /** An unrelated coach is just "any other user": public by default too. */
     public function test_unsupervising_coach_can_view_stats_by_default(): void
     {
         $d = $this->debater();
@@ -57,7 +57,7 @@ class DebaterStatsAccessValidationTest extends TestCase
     }
 
     /**
-     * Frontend spec §6.4 — the stats_visible opt-out is removed and statistics
+     * The stats_visible opt-out is removed and statistics
      * are public, so every role reads the same 200. (This test previously
      * asserted a stranger got 403 when the debater had opted out.)
      */
@@ -74,7 +74,7 @@ class DebaterStatsAccessValidationTest extends TestCase
     }
 
     /**
-     * Spec §1.9 — these metrics are debating-performance only, so a judge or
+     * These metrics are debating-performance only, so a judge or
      * trainer SUBJECT is rejected rather than returning empty aggregates that
      * read as "this judge has a 0% win rate".
      */
@@ -93,7 +93,7 @@ class DebaterStatsAccessValidationTest extends TestCase
         }
     }
 
-    /** Spec §1.4/§9 — position and framework filters may never be combined. */
+    /** Position and framework filters may never be combined. */
     public function test_positions_and_frameworks_are_mutually_exclusive(): void
     {
         $d = $this->debater();

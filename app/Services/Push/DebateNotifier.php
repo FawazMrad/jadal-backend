@@ -10,7 +10,7 @@ use App\Models\User;
 use App\Notifications\PushType;
 
 /**
- * Recipient resolution for the 8 push types (frontend spec §7.2).
+ * Recipient resolution for the 8 push types.
  *
  * Keeping the "who gets this" rules here means each trigger site stays a single
  * call, and the rules are testable without going through a controller.
@@ -48,7 +48,7 @@ class DebateNotifier
     /**
      * #2 — selected participants when a debate is announced.
      *
-     * De-duplication rule (spec §4): the selected set gets #2 ONLY. Callers
+     * De-duplication rule: the selected set gets #2 ONLY. Callers
      * that also fire #1 for the same transition must pass this same set as
      * $excludeUserIds, so nobody receives both for one event.
      */
@@ -166,7 +166,7 @@ class DebateNotifier
      * #7 — a join request was accepted or refused. The applicant only.
      *
      * `result` is passed in the replacements as well as the data payload: it
-     * selects which of the two copy rows PushType uses (handoff §4.3). The two
+     * selects which of the two copy rows PushType uses. The two
      * outcomes are separate messages rather than one templated sentence
      * because Arabic does not take a drop-in accepted/refused noun cleanly.
      * The DATA payload is unchanged.

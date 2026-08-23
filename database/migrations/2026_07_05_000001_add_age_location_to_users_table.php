@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Sprinkles §6.2 — public-profile fields. Both nullable: existing users have no value.
+// public-profile fields. Both nullable: existing users have no value.
 // birth_date is stored (not a raw age integer) so the returned `age` is always
 // computed fresh and never goes stale.
 return new class extends Migration

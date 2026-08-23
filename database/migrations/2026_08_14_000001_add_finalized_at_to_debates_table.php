@@ -4,7 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Guest mode §Q4 — the moment a debate reached a TERMINAL status
+// The moment a debate reached a TERMINAL status
 // (completed or cancelled). Needed because no existing column marks it:
 //
 //   ended_at  — stamped by nextStage() the instant the speeches finish, while

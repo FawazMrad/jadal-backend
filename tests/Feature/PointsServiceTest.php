@@ -12,7 +12,7 @@ use App\Services\Points\PointsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §3 — the points system: Elo-style, auditable, triggered once per debate. */
+/** The points system: Elo-style, auditable, triggered once per debate. */
 class PointsServiceTest extends TestCase
 {
     use RefreshDatabase;

@@ -76,7 +76,7 @@ return [
         'timeout'        => (int) env('WHISPER_TIMEOUT_SECONDS', 1800),
     ],
 
-    // Firebase Cloud Messaging (frontend spec §7). Absent config = push is a
+    // Firebase Cloud Messaging. Absent config = push is a
     // logged no-op, never an error — see PushService::isConfigured().
     'fcm' => [
         'project_id'  => env('FCM_PROJECT_ID'),

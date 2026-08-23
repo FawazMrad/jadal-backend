@@ -12,7 +12,7 @@ use App\Services\Stats\TeamStatsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** V2 §3 — no team-scoped stats API existed before this. */
+/** No team-scoped stats API existed before this. */
 class TeamStatsServiceTest extends TestCase
 {
     use RefreshDatabase;

@@ -10,7 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-/** MF_FU §5 — aggregate of the rating_judgement feedback a judge received. */
+/** Aggregate of the rating_judgement feedback a judge received. */
 class JudgeRatingStatsTest extends TestCase
 {
     use RefreshDatabase;

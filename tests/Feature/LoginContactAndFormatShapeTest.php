@@ -11,8 +11,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
-/** Sprinkles §7 (live-state format superset) + §9 (contact in login). */
-class SprinklesMiscTest extends TestCase
+/** Support contact on login, and the live-state format superset. */
+class LoginContactAndFormatShapeTest extends TestCase
 {
     use RefreshDatabase;
 

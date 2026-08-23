@@ -9,7 +9,7 @@ use App\Models\Team;
 use App\Models\User;
 
 /**
- * V2 §3 — the points system. Elo-style: a win against a higher-rated opponent
+ * The points system. Elo-style: a win against a higher-rated opponent
  * awards more than a win against a lower-rated one, and vice versa. There is
  * no separate hidden Elo rating — `users.points` / `teams.points` themselves
  * ARE the ratings used for the expected-outcome calculation, so the number a

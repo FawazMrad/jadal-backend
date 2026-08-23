@@ -61,20 +61,32 @@ class AdvanceDebatesLifecycle extends Command
                 app(DebateNotifier::class)->motionRevealed($debate);
             }
 
-            if ($debate->status === 'scheduled') {
-                $debate->update([
-                    'status'              => 'cancelled',
-                    'cancellation_reason' => 'no_participants_at_motion_reveal',
-                    // Terminal transition — anchors the guest read window.
-                    'finalized_at'        => $now,
-                ]);
-                $this->warn("Debate {$debate->id}: cancelled — no participants at motion reveal.");
-                // #1 — reaches nobody here by definition (the debate was still
-                // `scheduled`, so it has no approved participants), but kept for
-                // uniformity so every cancellation path notifies identically.
-                app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
-                return;
-            }
+            // TEMPORARILY DISABLED — auto-cancel when a debate reaches
+            // motion-reveal time with nobody registered.
+            //
+            // Disabled on request so a debate created with no registrations
+            // stays `scheduled` instead of being cancelled out from under the
+            // admin. The debate now simply sits open; nothing else in this
+            // step changes (the motion is still revealed above).
+            //
+            // Re-enable by uncommenting. If it stays off long-term, decide what
+            // SHOULD happen to a debate nobody joined — leaving them
+            // accumulating in `scheduled` forever is not a long-term answer.
+            //
+            // if ($debate->status === 'scheduled') {
+            //     $debate->update([
+            //         'status'              => 'cancelled',
+            //         'cancellation_reason' => 'no_participants_at_motion_reveal',
+            //         // Terminal transition — anchors the guest read window.
+            //         'finalized_at'        => $now,
+            //     ]);
+            //     $this->warn("Debate {$debate->id}: cancelled — no participants at motion reveal.");
+            //     // Reaches nobody here by definition (the debate was still
+            //     // `scheduled`, so it has no approved participants), but kept for
+            //     // uniformity so every cancellation path notifies identically.
+            //     app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
+            //     return;
+            // }
         }
 
         // ── Step 2: Open prep rooms ───────────────────────────────────────────
@@ -124,19 +136,27 @@ class AdvanceDebatesLifecycle extends Command
 
         // ── Step 3: Start debate at scheduled_at ─────────────────────────────
         if ($now->gte($debate->scheduled_at)) {
-            // Still 'scheduled' at start time means no participants were ever
-            // assigned — there is no debate to run.
-            if ($debate->status === 'scheduled') {
-                $debate->update([
-                    'status'              => 'cancelled',
-                    'cancellation_reason' => 'no_participants_at_motion_reveal',
-                    // Terminal transition — anchors the guest read window.
-                    'finalized_at'        => $now,
-                ]);
-                $this->warn("Debate {$debate->id}: cancelled — no participants by start time.");
-                app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
-                return;
-            }
+            // TEMPORARILY DISABLED — auto-cancel when start time arrives and the
+            // debate is still `scheduled` (i.e. no participants were ever
+            // assigned). Disabled alongside the motion-reveal cancellation
+            // above; see the note there.
+            //
+            // With this off, a debate nobody joined stays `scheduled` past its
+            // own start time. The `announced`/`teams-selected` branch below does
+            // not match `scheduled`, so the command simply does nothing further
+            // for it on every tick.
+            //
+            // if ($debate->status === 'scheduled') {
+            //     $debate->update([
+            //         'status'              => 'cancelled',
+            //         'cancellation_reason' => 'no_participants_at_motion_reveal',
+            //         // Terminal transition — anchors the guest read window.
+            //         'finalized_at'        => $now,
+            //     ]);
+            //     $this->warn("Debate {$debate->id}: cancelled — no participants by start time.");
+            //     app(DebateNotifier::class)->debateStateChangedFrom($debate, 'scheduled');
+            //     return;
+            // }
 
             if (in_array($debate->status, ['announced', 'teams-selected'])) {
                 // Auto-fill any missing speaker slots (+ default reply speaker).

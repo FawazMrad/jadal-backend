@@ -36,7 +36,16 @@ class CancelAtMotionRevealTest extends TestCase
         ]);
     }
 
-    public function test_scheduled_debate_with_no_participants_is_cancelled_at_motion_reveal(): void
+    /**
+     * The no-participants auto-cancel is currently commented out in
+     * AdvanceDebatesLifecycle (both the motion-reveal and the start-time site),
+     * so a debate nobody registered for now stays `scheduled`. The motion is
+     * still revealed on schedule.
+     *
+     * When that code is re-enabled, restore the cancellation assertions kept
+     * below.
+     */
+    public function test_scheduled_debate_with_no_participants_is_not_cancelled_at_motion_reveal(): void
     {
         $format = $this->makeFormat();
         // Motion-reveal time = scheduled_at - 1h. Scheduled in 30min → reveal time passed.
@@ -49,9 +58,13 @@ class CancelAtMotionRevealTest extends TestCase
         $this->artisan('debates:tick');
 
         $debate->refresh();
-        $this->assertEquals('cancelled', $debate->status);
-        $this->assertEquals('no_participants_at_motion_reveal', $debate->cancellation_reason);
+        $this->assertEquals('scheduled', $debate->status);
+        $this->assertNull($debate->cancellation_reason);
         $this->assertNotNull($debate->motion_revealed_at);
+
+        // Assertions for when auto-cancel is switched back on:
+        // $this->assertEquals('cancelled', $debate->status);
+        // $this->assertEquals('no_participants_at_motion_reveal', $debate->cancellation_reason);
     }
 
     public function test_announced_debate_is_not_cancelled_at_motion_reveal(): void

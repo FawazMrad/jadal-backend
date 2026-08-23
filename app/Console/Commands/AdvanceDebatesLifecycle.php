@@ -267,9 +267,16 @@ class AdvanceDebatesLifecycle extends Command
     }
 
     /**
-     * Auto-assign speaking_phase_order 1,2,3 for the given side if any slots are
-     * empty. When the format has a reply speech and no reply speaker has been
-     * chosen for this side, default the reply speaker to slot 1.
+     * Guarantee the side has a complete speaking order before the debate goes live.
+     *
+     * The team leader normally sets this through POST /debates/{debate}/team-speakers,
+     * which writes the authoritative order array (debates.prop_speaker_order /
+     * opp_speaker_order). When a team never did so, the debate went live with an
+     * empty array: no speaker resolved for any stage and an empty team card in the
+     * room. Fill it randomly from the side's approved debaters instead, so a
+     * debate is always runnable regardless of whether the team showed up to pick.
+     *
+     * An order the team already set is left alone.
      */
     private function autoAssignSpeakers(Debate $debate, string $side, bool $hasReply = false): void
     {
@@ -283,37 +290,75 @@ class AdvanceDebatesLifecycle extends Command
             return;
         }
 
-        $filled    = $approved->whereNotNull('speaking_phase_order')->pluck('speaking_phase_order')->toArray();
-        $needed    = array_diff([1, 2, 3], $filled);
-        $unassigned = $approved->whereNull('speaking_phase_order')->values();
+        $slots       = \App\Models\DebateFormat::SPEAKERS_PER_SIDE;
+        $orderColumn = $side === 'proposition' ? 'prop_speaker_order' : 'opp_speaker_order';
+        $approvedIds = $approved->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+        $existing    = array_map('intval', $debate->speakerOrderFor($side));
 
-        foreach ($needed as $slot) {
-            $participant = $unassigned->shift();
-            if (! $participant) {
-                // Not enough participants — pick random from approved list.
-                $participant = $approved->random();
-            }
-            $participant->update(['speaking_phase_order' => $slot]);
+        // Keep a leader-set order only while it is still valid: every slot filled
+        // and every slot pointing at a debater who is still approved on this side
+        // (participants can be removed after the order was saved). Otherwise the
+        // order is rebuilt from scratch rather than left partly broken.
+        if (count($existing) === $slots && array_diff($existing, $approvedIds) === []) {
+            return;
         }
 
-        // Default reply speaker = slot 1, unless the team leader already picked one.
-        if ($hasReply) {
-            $hasReplySpeaker = DebateParticipant::where('debate_id', $debate->id)
-                ->where('side', $side)
-                ->where('role', 'debater')
-                ->where('status', 'approved')
-                ->where('is_reply_speaker', true)
-                ->exists();
-
-            if (! $hasReplySpeaker) {
-                DebateParticipant::where('debate_id', $debate->id)
-                    ->where('side', $side)
-                    ->where('role', 'debater')
-                    ->where('status', 'approved')
-                    ->where('speaking_phase_order', 1)
-                    ->update(['is_reply_speaker' => true]);
-            }
+        // Random fill: distinct debaters first, then wrap around so a short team
+        // still covers every slot — the same multi-role shape team-speakers
+        // accepts, e.g. a 2-person team filling 3 slots as [A, B, A].
+        $pool  = $approved->shuffle()->pluck('user_id')->map(fn ($id) => (int) $id)->values()->all();
+        $order = [];
+        for ($i = 0; $i < $slots; $i++) {
+            $order[] = $pool[$i % count($pool)];
         }
+
+        $participantIds = $approved->pluck('id');
+
+        DB::transaction(function () use ($debate, $participantIds, $order, $orderColumn, $hasReply, $approved) {
+            $debate->update([$orderColumn => $order]);
+
+            // Mirror onto speaking_phase_order — one slot per participant, the
+            // first slot each distinct user fills. Same projection setTeamSpeakers
+            // writes, and what the legacy speaker-resolution path reads.
+            DebateParticipant::whereIn('id', $participantIds)
+                ->update(['speaking_phase_order' => null]);
+
+            $seen = [];
+            foreach ($order as $idx => $userId) {
+                if (in_array($userId, $seen, true)) {
+                    continue;
+                }
+                $seen[] = $userId;
+                DebateParticipant::whereIn('id', $participantIds)
+                    ->where('user_id', $userId)
+                    ->update(['speaking_phase_order' => $idx + 1]);
+            }
+
+            if (! $hasReply) {
+                return;
+            }
+
+            // The reply speaker must be one of the chosen speakers and must hold
+            // slot 1 or 2, never slot 3 — the constraint team-speakers enforces.
+            // A still-valid choice by the leader survives; anything else resets
+            // to the slot-1 speaker.
+            $current = $approved->firstWhere('is_reply_speaker', true);
+            $stillValid = $current
+                && in_array((int) $current->user_id, array_slice($order, 0, 2), true);
+
+            if ($stillValid) {
+                return;
+            }
+
+            DebateParticipant::whereIn('id', $participantIds)
+                ->update(['is_reply_speaker' => false]);
+
+            DebateParticipant::whereIn('id', $participantIds)
+                ->where('user_id', $order[0])
+                ->update(['is_reply_speaker' => true]);
+        });
+
+        $this->info("Debate {$debate->id}: {$side} speaking order auto-filled — " . implode(', ', $order) . '.');
     }
 
     private function createPhases(Debate $debate, \App\Models\DebateFormat $format): void

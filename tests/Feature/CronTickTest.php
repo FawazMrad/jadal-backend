@@ -294,4 +294,144 @@ class CronTickTest extends TestCase
         $phaseCount = DebatePhase::where('debate_id', $debate->id)->count();
         $this->assertEquals(6, $phaseCount); // no reply → 6 phases
     }
+
+    // ── Auto-filled speaking order when a team never picked ───────────────────
+
+    /**
+     * Builds a debate at start time with one approved judge and the requested
+     * number of approved debaters per side, none of them assigned a slot.
+     */
+    private function makeStartingDebate(int $propDebaters, int $oppDebaters, bool $hasReply = false): Debate
+    {
+        $debate = Debate::factory()->create([
+            'format_id'            => $this->makeFormat($hasReply)->id,
+            'status'               => 'teams-selected',
+            'scheduled_at'         => now()->subMinutes(5),
+            'motion_revealed_at'   => now()->subHour(),
+            'prep_rooms_opened_at' => now()->subMinutes(30),
+        ]);
+
+        DebateParticipant::factory()->create([
+            'debate_id' => $debate->id,
+            'user_id'   => User::factory()->create(['role' => 'judge'])->id,
+            'role'      => 'judge',
+            'side'      => 'judge',
+            'status'    => 'approved',
+        ]);
+
+        foreach (['proposition' => $propDebaters, 'opposition' => $oppDebaters] as $side => $count) {
+            for ($i = 0; $i < $count; $i++) {
+                DebateParticipant::factory()->create([
+                    'debate_id'            => $debate->id,
+                    'user_id'              => User::factory()->create(['role' => 'debater'])->id,
+                    'role'                 => 'debater',
+                    'side'                 => $side,
+                    'status'               => 'approved',
+                    'speaking_phase_order' => null,
+                ]);
+            }
+        }
+
+        return $debate;
+    }
+
+    /** @return int[] */
+    private function approvedUserIds(Debate $debate, string $side): array
+    {
+        return DebateParticipant::where('debate_id', $debate->id)
+            ->where('side', $side)
+            ->where('role', 'debater')
+            ->where('status', 'approved')
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    public function test_speaking_order_is_auto_filled_when_teams_never_selected(): void
+    {
+        $debate = $this->makeStartingDebate(4, 4);
+
+        $this->artisan('debates:tick');
+        $debate->refresh();
+
+        $this->assertEquals('live', $debate->status);
+
+        foreach (['proposition', 'opposition'] as $side) {
+            $order = $debate->speakerOrderFor($side);
+
+            $this->assertCount(DebateFormat::SPEAKERS_PER_SIDE, $order, "{$side} order should fill every slot");
+            $this->assertEmpty(
+                array_diff($order, $this->approvedUserIds($debate, $side)),
+                "{$side} order must only contain that side's approved debaters"
+            );
+            // 4 available debaters, 3 slots → no one should be doubled up.
+            $this->assertCount(3, array_unique($order));
+        }
+    }
+
+    public function test_short_team_repeats_a_debater_to_cover_every_slot(): void
+    {
+        $debate = $this->makeStartingDebate(2, 3);
+
+        $this->artisan('debates:tick');
+        $debate->refresh();
+
+        $order = $debate->speakerOrderFor('proposition');
+
+        $this->assertCount(3, $order);
+        $this->assertCount(2, array_unique($order), 'A 2-person team must cover 3 slots by repeating someone');
+        $this->assertEmpty(array_diff($order, $this->approvedUserIds($debate, 'proposition')));
+    }
+
+    public function test_order_chosen_by_the_team_leader_is_not_overwritten(): void
+    {
+        $debate = $this->makeStartingDebate(3, 3);
+        $chosen = $this->approvedUserIds($debate, 'proposition');
+        $debate->update(['prop_speaker_order' => $chosen]);
+
+        $this->artisan('debates:tick');
+        $debate->refresh();
+
+        $this->assertEquals($chosen, $debate->speakerOrderFor('proposition'));
+    }
+
+    public function test_stale_order_referencing_a_removed_debater_is_rebuilt(): void
+    {
+        $debate = $this->makeStartingDebate(3, 3);
+        $ids    = $this->approvedUserIds($debate, 'proposition');
+
+        // Leader picked an order, then one of those debaters was dropped.
+        $debate->update(['prop_speaker_order' => $ids]);
+        DebateParticipant::where('debate_id', $debate->id)
+            ->where('user_id', $ids[0])
+            ->update(['status' => 'rejected']);
+
+        $this->artisan('debates:tick');
+        $debate->refresh();
+
+        $order = $debate->speakerOrderFor('proposition');
+        $this->assertCount(3, $order);
+        $this->assertNotContains($ids[0], $order, 'A dropped debater must not keep a speaking slot');
+    }
+
+    public function test_auto_filled_order_also_flags_a_reply_speaker(): void
+    {
+        $debate = $this->makeStartingDebate(3, 3, hasReply: true);
+
+        $this->artisan('debates:tick');
+        $debate->refresh();
+
+        foreach (['proposition', 'opposition'] as $side) {
+            $order = $debate->speakerOrderFor($side);
+
+            $reply = DebateParticipant::where('debate_id', $debate->id)
+                ->where('side', $side)
+                ->where('is_reply_speaker', true)
+                ->get();
+
+            $this->assertCount(1, $reply, "{$side} needs exactly one reply speaker");
+            // Must be one of the speakers, and never the third one.
+            $this->assertContains((int) $reply->first()->user_id, array_slice($order, 0, 2));
+        }
+    }
 }
